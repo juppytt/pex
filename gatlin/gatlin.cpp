@@ -37,6 +37,7 @@ std::list<int> x_dbg_idx;
 
 std::mutex x_lock;
 
+#define CHECK_USAGE 0
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
@@ -2599,7 +2600,7 @@ void gatlin::figure_out_gep_using_type_field(InstructionSet& workset,
  * callee of indirect call is reasoned by its type or struct
  */
 void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
-        InstructionList& chks)
+				Type2Fields& current_t2fmaps, InstructionList& chks)
 {
     //ignore inline asm
     if (cs->isInlineAsm())
@@ -2632,6 +2633,9 @@ void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
         }
         for (auto chki: chks)
             ill->insert(chki);
+
+				// juhee: collect types accessed in critical function
+				crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
 
     }//else if (Value* csv = cs->getCalledValue())
     else if (cs->getCalledValue()!=NULL)
@@ -2681,6 +2685,9 @@ void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
             //insert all chks?
             for (auto chki: chks)
                 ill->insert(chki);
+
+						// juhee: collect types accessed in critical function
+						crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
         }
     }
 }
@@ -2837,6 +2844,24 @@ goodret:
     return;
 }
 
+
+// juhee
+void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& current_t2fmaps,
+        InstructionList& chks)
+{
+
+	for(Function::iterator fi = func->begin(), fe = func->end(); fi != fe; ++fi)
+  {
+    BasicBlock* bb = dyn_cast<BasicBlock>(fi);
+    for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
+    {
+			Instruction* si = dyn_cast<Instruction>(ii);
+			crit_type_field_collect(si, current_t2fmaps, chks);
+		}
+	}
+
+}
+
 /*
  * IPA: figure out all global variable usage and function calls
  * 
@@ -2974,7 +2999,7 @@ rescan_and_add_all:
 add:
             if (CallInst* cs = dyn_cast<CallInst>(ii))
             {
-                crit_func_collect(cs, current_crit_funcs, chks);
+                crit_func_collect(cs, current_crit_funcs, current_critical_type_fields, chks);
                 //continue;
                 //need to look at argument
             }
@@ -3136,8 +3161,11 @@ void gatlin::process_cpgf(Module& module)
 
     //pass 2
     errs()<<"Run Analysis, Threads:"<<knob_mt<<"\n";
+    
 
-    if (knob_gatlin_critical_var)
+		// juhee
+		if (knob_gatlin_check_usage) {
+		if (knob_gatlin_critical_var)
     {
         errs()<<"Critical variables\n";
         STOP_WATCH_MON(WID_0, check_critical_variable_usage(module));
@@ -3153,6 +3181,7 @@ void gatlin::process_cpgf(Module& module)
         STOP_WATCH_MON(WID_0, check_critical_type_field_usage(module));
     }
     dump_non_kinit();
+		}
     delete skip_funcs;
     delete skip_vars;
     delete crit_syms;

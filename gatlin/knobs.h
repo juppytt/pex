@@ -125,5 +125,11 @@ cl::opt<unsigned int> knob_mt("mt",
         cl::desc("Multi-threading, number of threads - default 1"),
         cl::init(1));
 
+// juhee
+cl::opt<bool> knob_gatlin_check_usage("check-usage",
+				cl::desc("Check critical data usage - enabled by default"),
+				cl::init(true));
+
+
 #endif//_CAPCHK_KNOBS_
 

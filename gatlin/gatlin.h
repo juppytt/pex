@@ -167,9 +167,10 @@ class gatlin : public ModulePass
 #endif
 
         //used by forward_all_interesting_usage to collect critical resources
-        void crit_func_collect(CallInst*, FunctionSet&, InstructionList& chks);
+        void crit_func_collect(CallInst*, FunctionSet&, Type2Fields&, InstructionList& chks);
         void crit_vars_collect(Instruction*, ValueList&, InstructionList& chks);
         void crit_type_field_collect(Instruction*, Type2Fields&, InstructionList& chks);
+        void crit_type_field_in_func_collect(Function*, Type2Fields&, InstructionList& chks);
 
         /*
          * for debug purpose
