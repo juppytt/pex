@@ -2764,8 +2764,12 @@ void gatlin::crit_type_field_collect(Instruction* i, Type2Fields& current_t2fmap
             }
             //what is the first indice?
             StructType* stype = dyn_cast<StructType>(gep_operand_type);
-            if (is_skip_struct(stype->getStructName()))
+           
+						// juhee: if we're not going to check usage, do not skip structs
+						if (knob_gatlin_check_usage) {
+							if (is_skip_struct(stype->getStructName()))
                 return;
+						}
             int idx = dyn_cast<ConstantInt>(gep->idx_begin())->getSExtValue();
             current_t2fmaps[gep_operand_type].insert(idx);
             t = stype;
@@ -2808,8 +2812,12 @@ void gatlin::crit_type_field_collect(Instruction* i, Type2Fields& current_t2fmap
             }
             //what is the first indice?
             StructType* stype = dyn_cast<StructType>(gep_operand_type);
-            if (is_skip_struct(stype->getStructName()))
+            
+						// juhee
+						if (knob_gatlin_check_usage) {	
+							if (is_skip_struct(stype->getStructName()))
                 return;
+						}
 
             int idx = dyn_cast<ConstantInt>(gep->idx_begin())->getSExtValue();
             current_t2fmaps[gep_operand_type].insert(idx);
@@ -2848,12 +2856,17 @@ goodret:
 void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& current_t2fmaps,
        InstructionList& chks)
 {
-
 	//don't allow recursive
 	if (type_collected_functions.find(func) != type_collected_functions.end())
 		return;
 
   type_collected_functions.insert(func);
+	
+	bool verbose = false;
+	if (func->getName() == "vfs_unlink") {
+		verbose = true;
+		errs() << "vfs_unlink\n";
+	}
 
 
 	for(Function::iterator fi = func->begin(), fe = func->end(); fi != fe; ++fi)
@@ -2863,6 +2876,9 @@ void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& curren
     {
 			Instruction* si = dyn_cast<Instruction>(ii);
 			CallInst *ci = dyn_cast<CallInst>(ii);
+			if (verbose) {
+				errs () << "  " << *si << "\n";
+			}
 			// for now, only handle direct functions.
 			if (ci) {
 				if (Function* csfunc = get_callee_function_direct(ci))
