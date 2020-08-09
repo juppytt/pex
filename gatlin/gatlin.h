@@ -298,6 +298,7 @@ class gatlin : public ModulePass
         ValueSet critical_variables;
         Type2Fields critical_typefields;
 
+				FunctionSet type_collected_functions;
     private:
 /*
  * aux helper functions

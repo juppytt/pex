@@ -2634,7 +2634,7 @@ void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
         for (auto chki: chks)
             ill->insert(chki);
 
-				// juhee: collect types accessed in critical function
+				// juhee: collect types accessed in critical function recursively
 				crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
 
     }//else if (Value* csv = cs->getCalledValue())
@@ -2686,7 +2686,7 @@ void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
             for (auto chki: chks)
                 ill->insert(chki);
 
-						// juhee: collect types accessed in critical function
+						// juhee: collect types accessed in critical function recursively
 						crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
         }
     }
@@ -2844,11 +2844,17 @@ goodret:
     return;
 }
 
-
 // juhee
 void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& current_t2fmaps,
-        InstructionList& chks)
+       InstructionList& chks)
 {
+
+	//don't allow recursive
+	if (type_collected_functions.find(func) != type_collected_functions.end())
+		return;
+
+  type_collected_functions.insert(func);
+
 
 	for(Function::iterator fi = func->begin(), fe = func->end(); fi != fe; ++fi)
   {
@@ -2856,9 +2862,21 @@ void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& curren
     for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
     {
 			Instruction* si = dyn_cast<Instruction>(ii);
-			crit_type_field_collect(si, current_t2fmaps, chks);
+			CallInst *ci = dyn_cast<CallInst>(ii);
+			// for now, only handle direct functions.
+			if (ci) {
+				if (Function* csfunc = get_callee_function_direct(ci))
+				{
+					if (csfunc->isDeclaration() || csfunc->isIntrinsic() || is_syscall(csfunc))
+						continue;
+					crit_type_field_in_func_collect(csfunc, current_t2fmaps, chks);
+				} 
+			} else {
+				crit_type_field_collect(si, current_t2fmaps, chks);
+			}	
 		}
 	}
+  return;
 
 }
 
