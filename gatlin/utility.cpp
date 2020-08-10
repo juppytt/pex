@@ -1292,6 +1292,28 @@ void initialize_gatlin_sets(StringRef knob_skip_func_list,
         llvm::errs()<<"    - Kernel API list, total:"<<kernel_api->size()<<"\n";
 }
 
+//juhee
+////////////////////////////////////////////////////////////////////////////////
+SimpleSet *crit_structs;
+void initialize_crit_struct(StringRef knob_crit_struct_list)
+{
+    llvm::errs()<<"Load critical struct list...\n";
+    StringList builtin_crit_struct(std::begin(_builtin_crit_struct),
+                                   std::end(_builtin_crit_struct));
+    crit_structs = new SimpleSet(knob_crit_struct_list, builtin_crit_struct);
+    llvm::errs() << "    - Critical structs, total: " << crit_structs->size() << "\n";
+    if (!crit_structs->use_builtin())
+        llvm::errs()<<"    - Critical structs, total:"<<crit_structs->size()<<"\n";
+
+}
+
+std::string get_struct_name(std::string tname)
+{
+    // strip '.XXX' at the last of the name
+    if (tname.find_first_of(".") != tname.find_last_of("."))
+        return tname.substr(0, tname.find_last_of("."));
+    return tname;
+}
 ////////////////////////////////////////////////////////////////////////////////
 void dump_callstack(InstructionList& callstk)
 {

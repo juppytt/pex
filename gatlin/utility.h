@@ -74,5 +74,11 @@ void initialize_gatlin_sets(StringRef knob_skip_func_list,
         StringRef knob_skip_var_list,
         StringRef knob_crit_symbol,
         StringRef knob_kernel_api);
+
+//juhee
+extern SimpleSet* crit_structs;
+
+void initialize_crit_struct(StringRef knob_crit_sturct_list);
+std::string get_struct_name(std::string);
 #endif //_GATLING_UTILITY_
 

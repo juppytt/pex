@@ -55,6 +55,8 @@ bool SimpleSet::exists_ignore_dot_number(const std::string &str)
 
 size_t SimpleSet::size()
 {
+    if (_use_builtin)
+        return builtin.size();
     return vars.size();
 }
 

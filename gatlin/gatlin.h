@@ -170,7 +170,15 @@ class gatlin : public ModulePass
         void crit_func_collect(CallInst*, FunctionSet&, Type2Fields&, InstructionList& chks);
         void crit_vars_collect(Instruction*, ValueList&, InstructionList& chks);
         void crit_type_field_collect(Instruction*, Type2Fields&, InstructionList& chks);
+
+
+        //juhee
         void crit_type_field_in_func_collect(Function*, Type2Fields&, InstructionList& chks);
+        void analyze_crit_struct(Module&);
+        void find_crit_parent_struct(Module&, StructTypeMap&, STy2PTy&, STy2PTy&);
+        void _find_crit_parent_struct(StructType*, StructTypeMap&, StringSet&, STy2PTy&, STy2PTy&);
+        void dump_structs(StructTypeMap&);
+        void dump_structs(StructTypeSet&);
 
         /*
          * for debug purpose
@@ -298,7 +306,10 @@ class gatlin : public ModulePass
         ValueSet critical_variables;
         Type2Fields critical_typefields;
 
-				FunctionSet type_collected_functions;
+        //juhee
+        FunctionSet type_collected_functions;
+        StructTypeSet all_structs;
+       
     private:
 /*
  * aux helper functions

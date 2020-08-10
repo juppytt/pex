@@ -37,7 +37,153 @@ std::list<int> x_dbg_idx;
 
 std::mutex x_lock;
 
-#define CHECK_USAGE 0
+#define PEX 1
+////////////////////////////////////////////////////////////////////////////////
+
+// juhee
+void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& current_t2fmaps,
+       InstructionList& chks)
+{
+
+    //don't allow recursive
+    if (type_collected_functions.find(func) != type_collected_functions.end())
+        return;
+
+    type_collected_functions.insert(func);
+
+
+    for(Function::iterator fi = func->begin(), fe = func->end(); fi != fe; ++fi)
+    {
+        BasicBlock* bb = dyn_cast<BasicBlock>(fi);
+        for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
+        {
+            Instruction* si = dyn_cast<Instruction>(ii);
+            CallInst *ci = dyn_cast<CallInst>(ii);
+            // for now, only handle direct functions.
+            if (ci) {
+                if (Function* csfunc = get_callee_function_direct(ci))
+                {
+                    if (csfunc->isDeclaration() || csfunc->isIntrinsic() || is_syscall(csfunc))
+                        continue;
+                    crit_type_field_in_func_collect(csfunc, current_t2fmaps, chks);
+                }
+            } else {
+                crit_type_field_collect(si, current_t2fmaps, chks);
+            }
+        }
+    }
+  return;
+}
+
+void gatlin::analyze_crit_struct(Module &M)
+{
+    // TODO
+    // 1. Proportion of critical structs
+    //    - number of struct defined in this module
+    //    - number of critical structs
+    //    - number of critical structs and their parents (nested/pointed)
+    // 2. Non-critical parents (nested/pointed)
+    //    - syscall call stack to write on these structs
+
+    // collect all struct types
+
+    StringSet st_visited;
+    for (auto *STy : M.getIdentifiedStructTypes()) {
+        if (!st_visited.count(get_struct_name(STy->getName().str())))
+            all_structs.insert(STy);
+    }
+
+
+    StructTypeMap crit_parent; // critical + their parents
+    STy2PTy st2pt_nest;
+    STy2PTy st2pt_point;
+
+    find_crit_parent_struct(M, crit_parent, st2pt_nest, st2pt_point);
+
+    errs() << "All critical parents\n";
+    dump_structs(crit_parent);
+
+    errs() << "Total struct    : " << all_structs.size() << "\n";
+    errs() << "Critical struct : " << crit_structs->size() << "\n";
+    errs() << "Parent struct   : " << crit_parent.size() << "\n";
+
+}
+
+void gatlin::find_crit_parent_struct(Module &M, StructTypeMap& crit_parent, \
+                                     STy2PTy &st2pt_n, STy2PTy &st2pt_p)
+{
+    StringSet st_visited;
+    for (auto Cname : *crit_structs)
+    {
+        StructType *CTy = M.getTypeByName(Cname);
+        _find_crit_parent_struct(CTy, crit_parent, st_visited, st2pt_n, st2pt_p);
+
+    }
+}
+
+void gatlin::_find_crit_parent_struct(StructType *cty, StructTypeMap& crit_parent, \
+                                      StringSet &visited,
+                                      STy2PTy &st2pt_n, STy2PTy &st2pt_p)
+{
+    std::string sname = get_struct_name(cty->getName().str());
+
+    if (visited.count(sname))
+        return;
+    visited.insert(sname);
+    crit_parent.insert({sname, cty});
+    StructTypeMap* sln = st2pt_n[cty];
+    if (sln==NULL) {
+        sln = new StructTypeMap;
+        st2pt_n[cty] = sln;
+    }
+
+    StructTypeMap* slp = st2pt_p[cty];
+    if (slp==NULL) {
+        slp = new StructTypeMap;
+        st2pt_p[cty] = slp;
+    }
+    for (auto *sty : all_structs)
+    {
+        sname = get_struct_name(sty->getName().str());
+        for (auto *ety : sty->elements())
+        {
+            // nesting parent
+            if (ety == cty) {
+                if (!crit_parent.count(sname)) {
+                    _find_crit_parent_struct(sty, crit_parent, visited, st2pt_n, st2pt_p);
+                }
+                if (!sln->count(sname))
+                    sln->insert({sname, sty});
+            }
+            // pointing parent
+            else if (ety->isPointerTy()) {
+                if (ety->getPointerElementType() == cty) {
+                    if (!crit_parent.count(sname)) {
+                        _find_crit_parent_struct(sty, crit_parent, visited, st2pt_n, st2pt_p);
+                    }
+                    if (!slp->count(sname))
+                        slp->insert({sname, sty});
+                }
+            }
+        }
+    }
+}
+
+void gatlin::dump_structs(StructTypeMap &ss)
+{
+    for (auto iter : ss)
+    {
+        errs() <<  "    " << iter.first << "\n";
+    }
+
+}
+
+void gatlin::dump_structs(StructTypeSet &ss)
+{
+    for (auto *iter : ss)
+        errs() << "    " << iter->getName() << "\n";
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
@@ -2600,7 +2746,7 @@ void gatlin::figure_out_gep_using_type_field(InstructionSet& workset,
  * callee of indirect call is reasoned by its type or struct
  */
 void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
-				Type2Fields& current_t2fmaps, InstructionList& chks)
+    			Type2Fields& current_t2fmaps, InstructionList& chks)
 {
     //ignore inline asm
     if (cs->isInlineAsm())
@@ -2634,8 +2780,8 @@ void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
         for (auto chki: chks)
             ill->insert(chki);
 
-				// juhee: collect types accessed in critical function recursively
-				crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
+        // juhee: collect types accessed in critical function recursively
+        crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
 
     }//else if (Value* csv = cs->getCalledValue())
     else if (cs->getCalledValue()!=NULL)
@@ -2686,8 +2832,8 @@ void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
             for (auto chki: chks)
                 ill->insert(chki);
 
-						// juhee: collect types accessed in critical function recursively
-						crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
+            // juhee: collect types accessed in critical function recursively
+            crit_type_field_in_func_collect(csf, current_t2fmaps, chks);
         }
     }
 }
@@ -2852,6 +2998,8 @@ goodret:
     return;
 }
 
+<<<<<<< HEAD
+=======
 // juhee
 void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& current_t2fmaps,
        InstructionList& chks)
@@ -2895,6 +3043,7 @@ void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& curren
   return;
 
 }
+>>>>>>> b44db9a1b4d746f1601c47487e57ff543bf23607
 
 /*
  * IPA: figure out all global variable usage and function calls
@@ -3132,6 +3281,7 @@ void gatlin::process_cpgf(Module& module)
      * pre-process
      * generate resource/functions from syscall entry function
      */
+#if PEX
     initialize_gatlin_sets(knob_skip_func_list, knob_skip_var_list,
                             knob_crit_symbol, knob_kernel_api);
 
@@ -3182,45 +3332,57 @@ void gatlin::process_cpgf(Module& module)
         STOP_WATCH_MON(WID_0, populate_indcall_list_using_cvf(module));
     }
     //exit(0);
-    //pass 1
-    errs()<<"Collect all permission-checked variables and functions\n";
-    STOP_WATCH_MON(WID_0, collect_crits(module));
-    errs()<<"Collected "<<critical_functions.size()<<" critical functions\n";
-    errs()<<"Collected "<<critical_variables.size()<<" critical variables\n";
-    errs()<<"Collected "<<critical_typefields.size()<<" critical type/fields\n";
+#endif
 
-    dump_v2ci();
-    dump_f2ci();
-    dump_tf2ci();
+    if (knob_crit_struct_analysis) {
+        initialize_crit_struct(knob_crit_struct_list);
+        analyze_crit_struct(module);
+        delete crit_structs;
+    }
+    else {
+        //pass 1
+        errs()<<"Collect all permission-checked variables and functions\n";
+        STOP_WATCH_MON(WID_0, collect_crits(module));
+        errs()<<"Collected "<<critical_functions.size()<<" critical functions\n";
+        errs()<<"Collected "<<critical_variables.size()<<" critical variables\n";
+        errs()<<"Collected "<<critical_typefields.size()<<" critical type/fields\n";
 
-    //pass 2
-    errs()<<"Run Analysis, Threads:"<<knob_mt<<"\n";
-    
+        dump_v2ci();
+        dump_f2ci();
+        dump_tf2ci();
 
-		// juhee
-		if (knob_gatlin_check_usage) {
-		if (knob_gatlin_critical_var)
-    {
-        errs()<<"Critical variables\n";
-        STOP_WATCH_MON(WID_0, check_critical_variable_usage(module));
+        //pass 2
+        errs()<<"Run Analysis, Threads:"<<knob_mt<<"\n";
+
+
+        // juhee
+        if (knob_gatlin_check_usage) {
+            if (knob_gatlin_critical_var)
+            {
+                errs()<<"Critical variables\n";
+                STOP_WATCH_MON(WID_0, check_critical_variable_usage(module));
+            }
+            if (knob_gatlin_critical_fun)
+            {
+                errs()<<"Critical functions\n";
+                STOP_WATCH_MON(WID_0, check_critical_function_usage(module));
+            }
+            if (knob_gatlin_critical_type_field)
+            {
+                errs()<<"Critical Type Field\n";
+                STOP_WATCH_MON(WID_0, check_critical_type_field_usage(module));
+            }
+            dump_non_kinit();
+        }
     }
-    if (knob_gatlin_critical_fun)
-    {
-        errs()<<"Critical functions\n";
-        STOP_WATCH_MON(WID_0, check_critical_function_usage(module));
-    }
-    if (knob_gatlin_critical_type_field)
-    {
-        errs()<<"Critical Type Field\n";
-        STOP_WATCH_MON(WID_0, check_critical_type_field_usage(module));
-    }
-    dump_non_kinit();
-		}
+
+#if PEX
     delete skip_funcs;
     delete skip_vars;
     delete crit_syms;
     delete kernel_api;
     delete gating;
+#endif
 }
 
 bool gatlin::runOnModule(Module &module)

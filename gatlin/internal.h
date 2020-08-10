@@ -5,6 +5,13 @@
 #ifndef _CAPCHK_INTERNAL_H_
 #define _CAPCHK_INTERNAL_H_
 
+// juhee
+[[maybe_unused]]
+static const char *_builtin_crit_struct [] =
+{
+    "struct.task_struct",
+    "struct.cred",
+};
 /*
  * check functions
  */
@@ -330,6 +337,9 @@ static const char* _builtin_struct_to_skip [] =
     "struct.sk_buff",
     "struct.kernel_symbol",
 };
+
+
+
 
 #endif//_CAPCHK_INTERNAL_H_
 

@@ -127,9 +127,16 @@ cl::opt<unsigned int> knob_mt("mt",
 
 // juhee
 cl::opt<bool> knob_gatlin_check_usage("check-usage",
-				cl::desc("Check critical data usage - enabled by default"),
-				cl::init(true));
+        cl::desc("Check critical data usage - enabled by default"),
+        cl::init(true));
 
+cl::opt<bool> knob_crit_struct_analysis("struct-anal",
+        cl::desc("Critical struct usage analysis"),
+        cl::init(false));
+
+cl::opt<string> knob_crit_struct_list("structlist",
+        cl::desc("Critical struct list for usage analysis"),
+        cl::init("crit.struct"));
 
 #endif//_CAPCHK_KNOBS_
 

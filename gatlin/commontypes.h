@@ -68,5 +68,8 @@ typedef std::list<IFPair*> IFPairs;
 //map struct type to pairs
 typedef std::unordered_map<StructType*, IFPairs*> DMInterface;
 
+//juhee
+typedef std::map<std::string, StructType *> StructTypeMap;
+typedef std::set<StructType*> StructTypeSet;
+typedef std::map<Type*, StructTypeMap*> STy2PTy;
 #endif//_COMMON_TYPES_
-
