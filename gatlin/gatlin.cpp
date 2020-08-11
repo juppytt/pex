@@ -2729,7 +2729,7 @@ void gatlin::figure_out_gep_using_type_field(InstructionSet& workset,
                 {
                     //check field
                     assert(gep->hasIndices());
-                    ConstantInt* cint = dyn_cast<ConstantInt>(gep->idx_begin());
+                    ConstantInt* cint = dyn_cast<ConstantInt>(gep->idx_begin()+1);
                     if (!cint)
                         continue;
                     int idx = cint->getSExtValue();
@@ -2899,7 +2899,7 @@ void gatlin::crit_type_field_collect(Instruction* i, Type2Fields& current_t2fmap
                 return;
             //FIXME: only handle the first field as of now
             assert(gep->hasIndices());
-            if (!(dyn_cast<ConstantInt>(gep->idx_begin())))
+            if (!(dyn_cast<ConstantInt>(gep->idx_begin()+1)))
             {
                 /*errs()<<"gep has no indices @ position 0 ";
                 gep->getDebugLoc().print(errs());
@@ -2911,12 +2911,12 @@ void gatlin::crit_type_field_collect(Instruction* i, Type2Fields& current_t2fmap
             //what is the first indice?
             StructType* stype = dyn_cast<StructType>(gep_operand_type);
            
-						// juhee: if we're not going to check usage, do not skip structs
-						if (knob_gatlin_check_usage) {
-							if (is_skip_struct(stype->getStructName()))
-                return;
-						}
-            int idx = dyn_cast<ConstantInt>(gep->idx_begin())->getSExtValue();
+            // juhee: if we're not going to check usage, do not skip structs
+            if (knob_gatlin_check_usage) {
+                if (is_skip_struct(stype->getStructName()))
+                    return;
+            }
+            int idx = dyn_cast<ConstantInt>(gep->idx_begin()+1)->getSExtValue();
             current_t2fmaps[gep_operand_type].insert(idx);
             t = stype;
             goto goodret;
@@ -2947,7 +2947,7 @@ void gatlin::crit_type_field_collect(Instruction* i, Type2Fields& current_t2fmap
                 return;
             //FIXME: only handle the first field as of now
             assert(gep->hasIndices());
-            if (!(dyn_cast<ConstantInt>(gep->idx_begin())))
+            if (!(dyn_cast<ConstantInt>(gep->idx_begin()+1)))
             {
                 /*errs()<<"gep has no indices @ position 0 ";
                 gep->getDebugLoc().print(errs());
@@ -2959,13 +2959,13 @@ void gatlin::crit_type_field_collect(Instruction* i, Type2Fields& current_t2fmap
             //what is the first indice?
             StructType* stype = dyn_cast<StructType>(gep_operand_type);
             
-						// juhee
-						if (knob_gatlin_check_usage) {	
-							if (is_skip_struct(stype->getStructName()))
-                return;
-						}
+            // juhee
+            if (knob_gatlin_check_usage) {
+                if (is_skip_struct(stype->getStructName()))
+                    return;
+            }
 
-            int idx = dyn_cast<ConstantInt>(gep->idx_begin())->getSExtValue();
+            int idx = dyn_cast<ConstantInt>(gep->idx_begin()+1)->getSExtValue();
             current_t2fmaps[gep_operand_type].insert(idx);
             t = stype;
             goto goodret;
@@ -2998,52 +2998,6 @@ goodret:
     return;
 }
 
-<<<<<<< HEAD
-=======
-// juhee
-void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& current_t2fmaps,
-       InstructionList& chks)
-{
-	//don't allow recursive
-	if (type_collected_functions.find(func) != type_collected_functions.end())
-		return;
-
-  type_collected_functions.insert(func);
-	
-	bool verbose = false;
-	if (func->getName() == "vfs_unlink") {
-		verbose = true;
-		errs() << "vfs_unlink\n";
-	}
-
-
-	for(Function::iterator fi = func->begin(), fe = func->end(); fi != fe; ++fi)
-  {
-    BasicBlock* bb = dyn_cast<BasicBlock>(fi);
-    for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
-    {
-			Instruction* si = dyn_cast<Instruction>(ii);
-			CallInst *ci = dyn_cast<CallInst>(ii);
-			if (verbose) {
-				errs () << "  " << *si << "\n";
-			}
-			// for now, only handle direct functions.
-			if (ci) {
-				if (Function* csfunc = get_callee_function_direct(ci))
-				{
-					if (csfunc->isDeclaration() || csfunc->isIntrinsic() || is_syscall(csfunc))
-						continue;
-					crit_type_field_in_func_collect(csfunc, current_t2fmaps, chks);
-				} 
-			} else {
-				crit_type_field_collect(si, current_t2fmaps, chks);
-			}	
-		}
-	}
-  return;
-
-}
->>>>>>> b44db9a1b4d746f1601c47487e57ff543bf23607
 
 /*
  * IPA: figure out all global variable usage and function calls
@@ -3334,7 +3288,7 @@ void gatlin::process_cpgf(Module& module)
     //exit(0);
 #endif
 
-    if (knob_crit_struct_analysis) {
+    if (knob_analyze_crit_struct) {
         initialize_crit_struct(knob_crit_struct_list);
         analyze_crit_struct(module);
         delete crit_structs;

@@ -130,7 +130,7 @@ cl::opt<bool> knob_gatlin_check_usage("check-usage",
         cl::desc("Check critical data usage - enabled by default"),
         cl::init(true));
 
-cl::opt<bool> knob_crit_struct_analysis("struct-anal",
+cl::opt<bool> knob_analyze_crit_struct("struct-anal",
         cl::desc("Critical struct usage analysis"),
         cl::init(false));
 
