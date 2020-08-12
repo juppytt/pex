@@ -97,19 +97,42 @@ void gatlin::analyze_crit_struct(Module &M)
     }
 
 
-    StructTypeMap crit_parent; // critical + their parents
+    StructTypeMap crit_struct_map;
+    StructTypeMap crit_parent_map; // critical + their parents
     STy2PTy st2pt_nest;
     STy2PTy st2pt_point;
 
-    find_crit_parent_struct(M, crit_parent, st2pt_nest, st2pt_point);
+    build_crit_struct_map(M, crit_struct_map);
+    find_crit_parent_struct(M, crit_parent_map, st2pt_nest, st2pt_point);
 
     errs() << "All critical parents\n";
-    dump_structs(crit_parent);
+    dump_structs(crit_parent_map);
 
     errs() << "Total struct    : " << all_structs.size() << "\n";
-    errs() << "Critical struct : " << crit_structs->size() << "\n";
-    errs() << "Parent struct   : " << crit_parent.size() << "\n";
+    errs() << "Critical struct : " << crit_struct_map.size() << "\n";
+    errs() << "Parent struct   : " << crit_parent_map.size() << "\n";
 
+    Type2ChkInst crit_struct_read, crit_struct_write, crit_parent_read, crit_parent_write;
+    unsigned total_read = 0, total_write = 0;
+   
+    collect_crit_mem_access(M, crit_struct_map, crit_struct_read, crit_struct_write);
+    collect_crit_mem_access(M, crit_parent_map, crit_parent_read, crit_parent_write);
+    count_mem_access(M, total_read, total_write);
+
+    errs() << "Total read : " << total_read << "  Total write : " << total_write << "\n";
+    errs() << "Read from critical struct : " << crit_struct_read.size() << "\n";
+    errs() << "Write from critical struct : " << crit_struct_write.size() << "\n";
+    errs() << "Read from critical struct including : " << crit_parent_read.size() << "\n";
+    errs() << "Write from critical struct including parent : " << crit_parent_write.size() << "\n";
+}
+
+void gatlin::build_crit_struct_map(Module &M, StructTypeMap& struct_map)
+{
+    for (auto Cname : *crit_structs)
+    {
+        StructType *CTy = M.getTypeByName(Cname);
+        struct_map.insert({get_struct_name(CTy->getName().str()), CTy});
+    }
 }
 
 void gatlin::find_crit_parent_struct(Module &M, StructTypeMap& crit_parent, \
@@ -182,6 +205,180 @@ void gatlin::collect_critical_function_params()
         }
     }
 }
+
+void gatlin::count_mem_access(Module &module, unsigned &read, unsigned &write) {
+    for (Module::iterator f = module.begin(), f_end = module.end();
+         f != f_end; ++f) {
+        for (Function::iterator fi = f->begin(), fe = f->end(); fi != fe; ++fi)
+        {
+            BasicBlock* bb = dyn_cast<BasicBlock>(fi);
+            for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
+            {
+                if (isa<LoadInst>(ii))
+                    read++;
+                else if (isa<StoreInst>(ii))
+                    write++;
+            }
+        }
+    }
+}
+
+void gatlin::collect_crit_mem_access(Module &M, StructTypeMap &structs,
+                                     Type2ChkInst &t2wr, Type2ChkInst &t2rd)
+{
+    for (auto sty : structs)
+    {
+        InstructionSet *iswr = new InstructionSet;
+        InstructionSet *isrd = new InstructionSet;
+        t2wr[sty.second] = iswr;
+        t2rd[sty.second] = isrd;
+        errs()<<ANSI_COLOR_YELLOW
+            <<"Collect critical memory access of Type : "
+            <<get_struct_name(sty.first)
+              <<ANSI_COLOR_RESET<<"\n";
+       
+        figure_out_ldst_using_type_name(sty.first, M, iswr, isrd);
+
+        InstructionSet workset;
+        figure_out_gep_using_type_name(workset, sty.first, M);
+
+        for (auto* U: workset)
+        {
+            Function*f = U->getFunction();
+            errs()<<" @ "<<f->getName()<<" ";
+            U->getDebugLoc().print(errs());
+            errs()<<"\n";
+
+            int read=0, write=0, call=0;
+            _forward_slice_reachable_to_mem_access(dyn_cast<Instruction>(U), read, write, call, iswr, isrd, structs);
+
+            errs()<<ANSI_COLOR_GREEN<<"Read: "<<read<<" "
+                  <<ANSI_COLOR_RED<<"Write: "<<write<<" "
+                  <<ANSI_COLOR_YELLOW<<"Call: "<<call
+                  <<ANSI_COLOR_RESET<<"\n";
+        }
+    }
+}
+
+void gatlin::_forward_slice_reachable_to_mem_access(Instruction *I,
+                                                    int &read, int &write, int &call,
+                                                    InstructionSet *iswr, InstructionSet *isrd,
+                                                    StructTypeMap &structs)
+{
+    for (auto *U : I->users())
+    {
+        if (!isa<Instruction>(U))
+            continue;
+        Instruction *ui = dyn_cast<Instruction>(U);
+        if (LoadInst *li = dyn_cast<LoadInst>(ui)) {
+            read++;
+            isrd->insert(li);
+        } else if (StoreInst *si = dyn_cast<StoreInst>(ui)) {
+            write++;
+            iswr->insert(si);
+        } else if (CallInst *ci = dyn_cast<CallInst>(ui)) {
+            call++;
+            // TODO
+        } else if (GetElementPtrInst *gi = dyn_cast<GetElementPtrInst>(ui)) {
+            Type* gty
+                = dyn_cast<PointerType>(gi->getPointerOperandType())->getElementType();
+            if (!structs.count(get_struct_name(gty->getStructName().str())))
+                _forward_slice_reachable_to_mem_access(ui, read, write, call, iswr, isrd, structs);
+        } else if (BitCastInst *bi = dyn_cast<BitCastInst>(ui)) {
+            _forward_slice_reachable_to_mem_access(ui, read, write, call, iswr, isrd, structs);
+        } else{
+            continue;
+        }
+    }
+}
+void gatlin::figure_out_ldst_using_type_name(std::string sname, Module &module,
+                                             InstructionSet *iswr, InstructionSet *isrd)
+{
+    for (Module::iterator f = module.begin(), f_end = module.end();
+         f != f_end; ++f)
+    {
+        if (is_skip_function(dyn_cast<Function>(f)->getName()))
+            continue;
+        for (Function::iterator fi = f->begin(), fe = f->end(); fi != fe; ++fi)
+        {
+            BasicBlock* bb = dyn_cast<BasicBlock>(fi);
+            for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
+            {
+                if (!isa<LoadInst>(ii) && !isa<StoreInst>(ii) && !isa<BitCastInst>(ii))
+                    continue;
+
+                if (LoadInst *li = dyn_cast<LoadInst>(ii))
+                {
+                    Type *op_type = dyn_cast<PointerType>(li->getPointerOperandType())->getElementType();
+                    std::string oname = get_struct_name(op_type->getStructName().str());
+                    if (sname == oname)
+                        isrd->insert(li);
+                } else if (StoreInst *si = dyn_cast<StoreInst>(ii))
+                {
+                    Type *op_type = dyn_cast<PointerType>(li->getPointerOperandType())->getElementType();
+                    std::string oname = get_struct_name(op_type->getStructName().str());
+                    if (sname == oname)
+                        iswr->insert(li);
+                } else if (BitCastInst *bi = dyn_cast<BitCastInst>(ii))
+                {
+                    //TODO: casted pointer passed to different functions
+
+                    if(PointerType *pty = dyn_cast<PointerType>(bi->getSrcTy())) {
+                        Type *op_type = pty->getElementType();
+                        std::string oname = get_struct_name(op_type->getStructName().str());
+                        if (sname == oname) {
+                            for (auto *u : bi->users()) {
+                                if (LoadInst *li = dyn_cast<LoadInst>(u))
+                                    isrd->insert(li);
+                                else if (StoreInst *si = dyn_cast<StoreInst>(u))
+                                    iswr->insert(li);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+void gatlin::figure_out_gep_using_type_name(InstructionSet& workset, std::string sname,
+                                            Module& module)
+{
+    for (Module::iterator f = module.begin(), f_end = module.end();
+        f != f_end; ++f)
+    {
+        if (is_skip_function(dyn_cast<Function>(f)->getName()))
+            continue;
+        for(Function::iterator fi = f->begin(), fe = f->end(); fi != fe; ++fi)
+        {
+            BasicBlock* bb = dyn_cast<BasicBlock>(fi);
+            for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
+            {
+                if (!isa<GetElementPtrInst>(ii))
+                    continue;
+                GetElementPtrInst* gep = dyn_cast<GetElementPtrInst>(ii);
+                /*if (!gep_used_by_call_or_store(gep))
+                    continue;*/
+                Type* gep_operand_type
+                    = dyn_cast<PointerType>(gep->getPointerOperandType())
+                        ->getElementType();
+                //check type
+                if (get_struct_name(gep_operand_type->getStructName().str())==sname)
+                    workset.insert(gep);
+            }
+        }
+    }
+}
+
+/*void gatlin::_collect_crit_mem_access_param(Function &func, int param,
+                                            Type2ChkInst &t2wr, Typ2ChkInst &t2rd,
+                                            FunctionSet &vfp)
+{
+    if (!vfp.count({func, param}))
+        return;
+}*/
 
 void gatlin::dump_structs(StructTypeMap &ss)
 {

@@ -72,4 +72,6 @@ typedef std::unordered_map<StructType*, IFPairs*> DMInterface;
 typedef std::map<std::string, StructType *> StructTypeMap;
 typedef std::set<StructType*> StructTypeSet;
 typedef std::map<StructType*, StructTypeMap*> STy2PTy;
+typedef std::map<Function *, std::set<int>> FunctionIntMap;
+
 #endif//_COMMON_TYPES_
