@@ -138,5 +138,9 @@ cl::opt<string> knob_crit_struct_list("structlist",
         cl::desc("Critical struct list for usage analysis"),
         cl::init("crit.struct"));
 
-#endif//_CAPCHK_KNOBS_
+cl::opt<bool> knob_crit_struct_write_only("write-only",
+        cl::desc("Collect and check critical data write only - disabled by default"),
+        cl::init(false));
 
+
+#endif//_CAPCHK_KNOBS_

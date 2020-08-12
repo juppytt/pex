@@ -89,8 +89,11 @@ void gatlin::analyze_crit_struct(Module &M)
 
     StringSet st_visited;
     for (auto *STy : M.getIdentifiedStructTypes()) {
-        if (!st_visited.count(get_struct_name(STy->getName().str())))
+        if (!st_visited.count(get_struct_name(STy->getName().str()))) {
+            if (STy->getName().startswith("union.anon") | STy->getName().startswith("struct.anon"))
+                continue;
             all_structs.insert(STy);
+        }
     }
 
 
@@ -165,6 +168,17 @@ void gatlin::_find_crit_parent_struct(StructType *cty, StructTypeMap& crit_paren
                         slp->insert({sname, sty});
                 }
             }
+        }
+    }
+}
+
+void gatlin::collect_critical_function_params()
+{
+    InstructionList nullList;
+    for (auto func : all_functions)
+    {
+        if (gating->is_gating_function(func)) {
+            crit_type_field_in_func_collect(func, critical_typefields, nullList);
         }
     }
 }
@@ -1998,9 +2012,12 @@ void gatlin::collect_crits(Module& module)
         InstructionList callgraph;
         InstructionList chks;
         forward_all_interesting_usage(func->getEntryBlock().getFirstNonPHI(),
-               0, false, callgraph, chks);
+            0, false, callgraph, chks);
         dbgstk.pop_back();
     }
+
+    //juhee
+    collect_critical_function_params();
 
     CRITFUNC = critical_functions.size();
     CRITVAR = critical_variables.size();
@@ -2666,6 +2683,9 @@ void gatlin::_check_critical_type_field_usage(Module* module, int tid, int wgsiz
         StructType* t = dyn_cast<StructType>(V.first);
         //std::set<int>& fields = V.second;
 
+        // skip anonymous structs
+        if (t->getName().startswith("struct.anon") || t->getName().startswith("union.anon"))
+            continue;
         errs()<<ANSI_COLOR_YELLOW
             <<"Inspect Use of Type:"
             <<t->getStructName()
