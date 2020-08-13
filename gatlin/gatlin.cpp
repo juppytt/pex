@@ -265,6 +265,7 @@ void gatlin::_forward_slice_reachable_to_mem_access(Instruction *I,
                                                     InstructionSet *iswr, InstructionSet *isrd,
                                                     StructTypeMap &structs)
 {
+    //errs() << "forward slice\n";
     for (auto *U : I->users())
     {
         if (!isa<Instruction>(U))
@@ -282,6 +283,8 @@ void gatlin::_forward_slice_reachable_to_mem_access(Instruction *I,
         } else if (GetElementPtrInst *gi = dyn_cast<GetElementPtrInst>(ui)) {
             Type* gty
                 = dyn_cast<PointerType>(gi->getPointerOperandType())->getElementType();
+            if (!gty->isStructTy())
+                continue;
             if (!structs.count(get_struct_name(gty->getStructName().str())))
                 _forward_slice_reachable_to_mem_access(ui, read, write, call, iswr, isrd, structs);
         } else if (BitCastInst *bi = dyn_cast<BitCastInst>(ui)) {
@@ -310,12 +313,16 @@ void gatlin::figure_out_ldst_using_type_name(std::string sname, Module &module,
                 if (LoadInst *li = dyn_cast<LoadInst>(ii))
                 {
                     Type *op_type = dyn_cast<PointerType>(li->getPointerOperandType())->getElementType();
+                    if (!op_type->isStructTy())
+                        continue;
                     std::string oname = get_struct_name(op_type->getStructName().str());
                     if (sname == oname)
                         isrd->insert(li);
                 } else if (StoreInst *si = dyn_cast<StoreInst>(ii))
                 {
-                    Type *op_type = dyn_cast<PointerType>(li->getPointerOperandType())->getElementType();
+                    Type *op_type = dyn_cast<PointerType>(si->getPointerOperandType())->getElementType();
+                    if (!op_type->isStructTy())
+                        continue;
                     std::string oname = get_struct_name(op_type->getStructName().str());
                     if (sname == oname)
                         iswr->insert(li);
@@ -325,6 +332,9 @@ void gatlin::figure_out_ldst_using_type_name(std::string sname, Module &module,
 
                     if(PointerType *pty = dyn_cast<PointerType>(bi->getSrcTy())) {
                         Type *op_type = pty->getElementType();
+                        if (!op_type->isStructTy())
+                            continue;
+
                         std::string oname = get_struct_name(op_type->getStructName().str());
                         if (sname == oname) {
                             for (auto *u : bi->users()) {
@@ -346,6 +356,7 @@ void gatlin::figure_out_ldst_using_type_name(std::string sname, Module &module,
 void gatlin::figure_out_gep_using_type_name(InstructionSet& workset, std::string sname,
                                             Module& module)
 {
+    //errs() << "figre out gep \n";
     for (Module::iterator f = module.begin(), f_end = module.end();
         f != f_end; ++f)
     {
@@ -365,6 +376,8 @@ void gatlin::figure_out_gep_using_type_name(InstructionSet& workset, std::string
                     = dyn_cast<PointerType>(gep->getPointerOperandType())
                         ->getElementType();
                 //check type
+                if (!gep_operand_type->isStructTy())
+                    continue;
                 if (get_struct_name(gep_operand_type->getStructName().str())==sname)
                     workset.insert(gep);
             }
