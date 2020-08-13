@@ -235,7 +235,7 @@ void gatlin::count_mem_access(Module &module, unsigned &read, unsigned &write) {
 }
 
 void gatlin::collect_crit_mem_access(Module &M, StructTypeMap &structs,
-                                     Type2ChkInst &t2wr, Type2ChkInst &t2rd)
+                                     Type2ChkInst &t2rd, Type2ChkInst &t2wr)
 {
     for (auto sty : structs)
     {
