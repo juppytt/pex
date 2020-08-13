@@ -119,11 +119,22 @@ void gatlin::analyze_crit_struct(Module &M)
     collect_crit_mem_access(M, crit_parent_map, crit_parent_read, crit_parent_write);
     count_mem_access(M, total_read, total_write);
 
+    unsigned csw = 0, csr = 0, cpw = 0, cpr = 0;;
+    for (auto v : crit_struct_write)
+        csw += v.second->size();
+    for (auto v : crit_struct_read)
+        csr += v.second->size();
+    for (auto v : crit_parent_write)
+        cpw += v.second->size();
+    for (auto v : crit_parent_read)
+        cpr += v.second->size();
+   
+
     errs() << "Total read : " << total_read << "  Total write : " << total_write << "\n";
-    errs() << "Read from critical struct : " << crit_struct_read.size() << "\n";
-    errs() << "Write from critical struct : " << crit_struct_write.size() << "\n";
-    errs() << "Read from critical struct including : " << crit_parent_read.size() << "\n";
-    errs() << "Write from critical struct including parent : " << crit_parent_write.size() << "\n";
+    errs() << "Read from critical struct : " << csr << "\n";
+    errs() << "Write from critical struct : " << csw << "\n";
+    errs() << "Read from critical struct including : " << cpr << "\n";
+    errs() << "Write from critical struct including parent : " << cpw << "\n";
 }
 
 void gatlin::build_crit_struct_map(Module &M, StructTypeMap& struct_map)
