@@ -190,7 +190,7 @@ class gatlin : public ModulePass
 
         void dump_structs(StructTypeMap&);
         void dump_structs(StructTypeSet&);
-
+        void dump_structs(StructTypeMap&, STy2PTy&, STy2PTy&);
         /*
          * for debug purpose
          */

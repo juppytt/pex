@@ -6,6 +6,7 @@ if (${LLVM_PACKAGE_VERSION} VERSION_LESS "8.0")
         module_duplicator.cpp
         cvfa.cpp
         gatlin.cpp
+        ppac.cpp
 
         DEPENDS
         PLUGIN_TOOL
@@ -19,11 +20,14 @@ else()
         module_duplicator.cpp
         cvfa.cpp
         gatlin.cpp
+        ppac.cpp
 
         DEPENDS
         PLUGIN_TOOL
         opt
         )
+
+
 endif()
 
 target_compile_features(libgatlin PRIVATE cxx_range_for cxx_auto_type)
@@ -34,6 +38,7 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Darwin")
         scalaropts support )
     target_link_libraries( libgatlin LLVMSvf LLVMCudd ${llvm_libs})
 else()
-    target_link_libraries( libgatlin LLVMSvf LLVMCudd )
+  target_link_libraries( libgatlin LLVMSvf LLVMCudd )
+
 endif()
 

@@ -37,7 +37,7 @@ std::list<int> x_dbg_idx;
 
 std::mutex x_lock;
 
-#define PEX 1
+#define PEX 0
 ////////////////////////////////////////////////////////////////////////////////
 
 // juhee
@@ -103,38 +103,41 @@ void gatlin::analyze_crit_struct(Module &M)
     STy2PTy st2pt_point;
 
     build_crit_struct_map(M, crit_struct_map);
+    errs() << "Initial structs\n";
+    dump_structs(crit_struct_map);
+
     find_crit_parent_struct(M, crit_parent_map, st2pt_nest, st2pt_point);
 
     errs() << "All critical parents\n";
-    dump_structs(crit_parent_map);
+    dump_structs(crit_parent_map, st2pt_nest, st2pt_point);
 
     errs() << "Total struct    : " << all_structs.size() << "\n";
     errs() << "Critical struct : " << crit_struct_map.size() << "\n";
     errs() << "Parent struct   : " << crit_parent_map.size() << "\n";
 
-    Type2ChkInst crit_struct_read, crit_struct_write, crit_parent_read, crit_parent_write;
-    unsigned total_read = 0, total_write = 0;
-   
-    collect_crit_mem_access(M, crit_struct_map, crit_struct_read, crit_struct_write);
-    collect_crit_mem_access(M, crit_parent_map, crit_parent_read, crit_parent_write);
-    count_mem_access(M, total_read, total_write);
-
-    unsigned csw = 0, csr = 0, cpw = 0, cpr = 0;;
-    for (auto v : crit_struct_write)
-        csw += v.second->size();
-    for (auto v : crit_struct_read)
-        csr += v.second->size();
-    for (auto v : crit_parent_write)
-        cpw += v.second->size();
-    for (auto v : crit_parent_read)
-        cpr += v.second->size();
-   
-
-    errs() << "Total read : " << total_read << "  Total write : " << total_write << "\n";
-    errs() << "Read from critical struct : " << csr << "\n";
-    errs() << "Write from critical struct : " << csw << "\n";
-    errs() << "Read from critical struct including : " << cpr << "\n";
-    errs() << "Write from critical struct including parent : " << cpw << "\n";
+//    Type2ChkInst crit_struct_read, crit_struct_write, crit_parent_read, crit_parent_write;
+//    unsigned total_read = 0, total_write = 0;
+//
+//    collect_crit_mem_access(M, crit_struct_map, crit_struct_read, crit_struct_write);
+//    collect_crit_mem_access(M, crit_parent_map, crit_parent_read, crit_parent_write);
+//    count_mem_access(M, total_read, total_write);
+//
+//    unsigned csw = 0, csr = 0, cpw = 0, cpr = 0;;
+//    for (auto v : crit_struct_write)
+//        csw += v.second->size();
+//    for (auto v : crit_struct_read)
+//        csr += v.second->size();
+//    for (auto v : crit_parent_write)
+//        cpw += v.second->size();
+//    for (auto v : crit_parent_read)
+//        cpr += v.second->size();
+//
+//
+//    errs() << "Total read : " << total_read << "  Total write : " << total_write << "\n";
+//    errs() << "Read from critical struct : " << csr << "\n";
+//    errs() << "Write from critical struct : " << csw << "\n";
+//    errs() << "Read from critical struct including : " << cpr << "\n";
+//    errs() << "Write from critical struct including parent : " << cpw << "\n";
 }
 
 void gatlin::build_crit_struct_map(Module &M, StructTypeMap& struct_map)
@@ -417,6 +420,35 @@ void gatlin::dump_structs(StructTypeSet &ss)
 {
     for (auto *iter : ss)
         errs() << "    " << iter->getName() << "\n";
+}
+
+void gatlin::dump_structs(StructTypeMap &ss, STy2PTy &nest, STy2PTy &point)
+{
+    errs() << "   nest  pnt\n";
+    for (auto iter : ss)
+    {
+        auto p_n = nest.find(iter.second);
+        auto p_p = point.find(iter.second);
+        if (p_n != nest.end() && p_p != point.end()) {
+            errs() << "    " << p_n->second->size();
+            errs() << "     " << p_p->second->size();
+            errs() << "    " << iter.first << "\n";
+
+            if (p_n->second->size() > 0) {
+                errs() << "                  nest:\n";
+                for (auto iter2 : *p_n->second)
+                    errs() << "             " << iter2.first << "\n";
+            }
+            if (p_p->second->size() > 0) {
+                errs() << "                  point:\n";
+                for (auto iter2 : *p_p->second)
+                    errs() << "                   " << iter2.first << "\n";
+            }
+        } else {
+            errs() << "    " << iter.first << "\n";
+        }
+    }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////

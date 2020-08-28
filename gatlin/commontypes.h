@@ -73,5 +73,6 @@ typedef std::map<std::string, StructType *> StructTypeMap;
 typedef std::set<StructType*> StructTypeSet;
 typedef std::map<StructType*, StructTypeMap*> STy2PTy;
 typedef std::map<Function *, std::set<int>> FunctionIntMap;
-
+typedef std::map<Instruction*, TypeSet*> Inst2Type;
+typedef std::map<Instruction*, ValueSet*> Inst2Val;
 #endif//_COMMON_TYPES_
