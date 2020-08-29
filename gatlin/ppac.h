@@ -71,6 +71,7 @@ private:
 
     GEP_TYPE find_gep_type(GetElementPtrInst*, bool, DominatorTree*, InstructionSet*);
     void find_stack_src_ty(LoadInst*, TypeSet*, DominatorTree*, MemorySSA*);
+    void find_src_ty(MemoryDef *def, TypeSet *ts);
     void check_cast_usage(GetElementPtrInst*);
     void initialize_alloc_funcs();
 

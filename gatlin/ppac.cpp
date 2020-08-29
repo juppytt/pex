@@ -334,26 +334,35 @@ void ppac::find_stack_src_ty(LoadInst *li, TypeSet *ts,
     Function *func = li->getFunction();
     StoreInst *src = NULL;
 
-    /*for (auto u : stack_ptr->uses()){
-        StoreInst *si = dyn_cast<StoreInst>(u);
-        if (!si)
-            continue;
-        if (si->getPointerOperand() != stack_ptr)
-            continue;
-    }*/
     MemoryAccess *ma = mssa->getWalker()->getClobberingMemoryAccess(li);
     //MemoryUseOrDef *muod = mssa->getMemoryAccess(li);
     //errs() << "Load: " << *li << "\n";
     //errs() << "Muod: " << *muod << "\n";
     //errs() << "Clob: " << *ma << "\n";
-    MemoryDef *def = dyn_cast<MemoryDef>(ma);
-    if (!def) {
-        errs() << "Cannot find def?\n    " << *li << "\n";
+
+    if (isa<MemoryDef>(ma)) {
+        find_src_ty(dyn_cast<MemoryDef>(ma), ts);
     }
+    else if (isa<MemoryPhi>(ma)){
+        MemoryPhi *mphi = dyn_cast<MemoryPhi>(ma);
+        errs() << "MPhi incoming values:\n";
+        for (int i=0; i<mphi->getNumIncomingValues(); i++)
+        {
+            MemoryAccess *in = mphi->getIncomingValue(i);
+            errs() << "  " << *in << "\n";
+            if (isa<MemoryDef>(in))
+                find_src_ty(dyn_cast<MemoryDef>(in), ts);
+        }
+    }
+
+}
+void ppac::find_src_ty(MemoryDef *def, TypeSet *ts)
+{
     Instruction *defi = def->getMemoryInst();
     StoreInst *defsi = dyn_cast<StoreInst>(defi);
     if (!defsi) {
         errs() << "Closest definition is not store?\n    " << *defi << "\n";
+        return;
     }
 
     Value *stval = defsi->getValueOperand();
