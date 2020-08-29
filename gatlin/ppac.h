@@ -56,17 +56,20 @@ UNPRIV
 class ppac : public ModulePass
 {
 private:
-    virtual bool runOnModule(Module &) override;
-    virtual bool doInitialization(Module &) override;
+    virtual bool runOnModule(Module&) override;
+    virtual bool doInitialization(Module&) override;
     virtual void getAnalysisUsage(AnalysisUsage&) const override;
-    bool ppacPass(Module &);
+    bool ppacPass(Module&);
 
-    GEP_TYPE is_interesting_gep(GetElementPtrInst*, DominatorTree*);
-    void collect_privileged_instructions(Module&);
-    void collect_internal_source_type(GetElementPtrInst*, InstructionSet*,
+    void process_ppac(Module&);
+    GEP_TYPE is_interesting_gep(GetElementPtrInst*, DominatorTree*, InstructionSet*);
+    void collect_privileged_instructions(Function*, DominatorTree*, InstructionSet*);
+    void collect_internal_source_type(Function*, InstructionSet*,
                                       DominatorTree*, MemorySSA*);
+    void _collect_internal_source_type(Instruction*, InstructionSet*,
+                                       DominatorTree*, MemorySSA*);
 
-    GEP_TYPE find_gep_type(GetElementPtrInst*, bool, DominatorTree*);
+    GEP_TYPE find_gep_type(GetElementPtrInst*, bool, DominatorTree*, InstructionSet*);
     void find_stack_src_ty(LoadInst*, TypeSet*, DominatorTree*, MemorySSA*);
     void check_cast_usage(GetElementPtrInst*);
     void initialize_alloc_funcs();

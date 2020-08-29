@@ -7,11 +7,11 @@ extern cl::opt<string> knob_crit_struct_list;
 char ppac::ID;
 ///////////////////////////////////////////////////////////////////////////
 
+// Backward analysis of privileged gep instruction usage.
 GEP_TYPE ppac::find_gep_type(GetElementPtrInst *gi, bool dbg,
-                             DominatorTree *dt)
+                             DominatorTree *dt, InstructionSet *chk_set)
 {
     Function *func = gi->getFunction();
-
 
     GEP_TYPE res = PRIV_ETC;
 
@@ -46,8 +46,6 @@ GEP_TYPE ppac::find_gep_type(GetElementPtrInst *gi, bool dbg,
                     continue;
                 worklist.push_front(ui);
             }
-            if (isa<CastInst>(v))
-                res = CAST;
             continue;
         }
         if (isa<LoadInst>(v) || isa<StoreInst>(v)) {
@@ -64,7 +62,7 @@ GEP_TYPE ppac::find_gep_type(GetElementPtrInst *gi, bool dbg,
                 print(uselist);
             }
             uselist.pop_back();
-
+            chk_set->insert(cast<Instruction>(v));
 
             if (worklist.size()){
                 errs() << "Worklist not empty\n";
@@ -99,7 +97,7 @@ GEP_TYPE ppac::find_gep_type(GetElementPtrInst *gi, bool dbg,
     return res;
 }
 
-GEP_TYPE ppac::is_interesting_gep(GetElementPtrInst *gi, DominatorTree *dt)
+GEP_TYPE ppac::is_interesting_gep(GetElementPtrInst *gi, DominatorTree *dt, InstructionSet *chk_set)
 {
     Type *gty = gi->getSourceElementType();
     StructType *sty = dyn_cast<StructType>(gty);
@@ -108,12 +106,10 @@ GEP_TYPE ppac::is_interesting_gep(GetElementPtrInst *gi, DominatorTree *dt)
     if (!crit_structs->exists(sty->getName()))
         return UNPRIV;
 
-    return find_gep_type(gi, false, dt);
+    return find_gep_type(gi, false, dt, chk_set);
 
 }
-
-// TODO: Separate collect instructions / find source
-void ppac::collect_privileged_instructions(Module &module)
+void ppac::process_ppac(Module &module)
 {
     for (Module::iterator fi = module.begin(), fe = module.end();
          fi != fe; ++fi)
@@ -123,72 +119,99 @@ void ppac::collect_privileged_instructions(Module &module)
             continue;
         if (func->isDeclaration() || func->isIntrinsic() || (!func->hasName()))
             continue;
-        InstructionSet *is = f2di[func];
-        if (is == NULL){
-            is = new InstructionSet;
-            f2di[func] = is;
+        InstructionSet *chk_set = f2di[func];
+        if (chk_set == NULL){
+            chk_set = new InstructionSet;
+            f2di[func] = chk_set;
         }
         DominatorTree dt(*func);
         AliasAnalysis *aa = &getAnalysis<AAResultsWrapperPass>(*func).getAAResults();
         MemorySSA mssa(*func, aa, &dt);
 
-        //errs() << "MemorySSA\n";
-        //mssa.dump();
-        //errs() << "\n";
-        for (Function::iterator bi = func->begin(), be = func->end();
-             bi != be; ++bi)
+        errs() << "MemorySSA\n";
+        mssa.dump();
+        errs() << "\n";
+
+        collect_privileged_instructions(func, &dt, chk_set);
+        collect_internal_source_type(func, chk_set, &dt, &mssa);
+
+    }
+
+    dump_i2ty();
+}
+// priv. struct type gep - ld/st
+// priv. struct pointer type ld/st
+void ppac::collect_privileged_instructions(Function *func, DominatorTree *dt, InstructionSet *chk_set)
+{
+    for (Function::iterator bi = func->begin(), be = func->end();
+         bi != be; ++bi)
+    {
+        BasicBlock* bb = dyn_cast<BasicBlock>(bi);
+        for (BasicBlock::iterator ii = bb->begin(), ie = bb->end();
+             ii != ie; ++ii)
         {
-            BasicBlock* bb = dyn_cast<BasicBlock>(bi);
-            for (BasicBlock::iterator ii = bb->begin(), ie = bb->end();
-                 ii != ie; ++ii)
-            {
-                GetElementPtrInst *gi = dyn_cast<GetElementPtrInst>(ii);
-                if (!gi)
+            GetElementPtrInst *gi = dyn_cast<GetElementPtrInst>(ii);
+            if (!gi)
+                continue;
+            GEP_TYPE gep_ty = is_interesting_gep(gi, dt, chk_set);
+            switch(gep_ty) {
+                case UNPRIV:
                     continue;
-                GEP_TYPE gep_ty = is_interesting_gep(gi, &dt);
-                switch(gep_ty) {
-                    case UNPRIV:
-                        continue;
-                    case PRIV_ETC:
-                        find_gep_type(gi, true, &dt);
-                        continue;
-                    case LOAD:
-                    case STORE:
-                        collect_internal_source_type(gi, is, &dt, &mssa);
-                    case CAST:
-                        check_cast_usage(gi);
-                }
+                case PRIV_ETC:
+                    find_gep_type(gi, true, dt, chk_set);
+                    continue;
+                case LOAD:
+                case STORE:
+                    //collect_internal_source_type(gi, is, dt, &mssa);
+                default:
+                    continue;
             }
         }
     }
-    dump_i2ty();
 }
 
-void ppac::collect_internal_source_type(GetElementPtrInst *gi, InstructionSet* is,
+void ppac::collect_internal_source_type(Function *func, InstructionSet *chk_set,
                                         DominatorTree *dt, MemorySSA *mssa) {
-    if (is->count(gi))
-        return;
-    is->insert(gi);
 
-    StructType *sty = dyn_cast<StructType>(gi->getSourceElementType());
-    if (!sty) {
-        errs() << "GEP is not struct type: \n    " << *gi << "\n";
-        return;
+    for (auto ii : *chk_set) {
+        _collect_internal_source_type(ii, chk_set, dt, mssa);
     }
-   
-    TypeSet *ts = new TypeSet;
-    i2ty[gi] = ts;
-
-    ValueSet *vs_local = new ValueSet;
-    ValueSet *vs_trans = new ValueSet;
-
-    i2vl_local[gi] = vs_local;
-    i2vl_trans[gi] = vs_trans;
+}
+void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_set,
+                                        DominatorTree *dt,
+                                        MemorySSA *mssa) {
+    TypeSet *ts = i2ty[ii];
+    ValueSet *vs_local = i2vl_local[ii];
+    ValueSet *vs_trans = i2vl_trans[ii];
+    if (!ts){
+        ts = new TypeSet;
+        vs_local = new ValueSet;
+        vs_trans = new ValueSet;
+        i2ty[ii] = ts;
+        i2vl_local[ii] = vs_local;
+        i2vl_trans[ii] = vs_trans;
+    }
 
     InstructionSet visited;
     InstructionList worklist;
     InstructionList uselist;
-    worklist.push_back(gi);
+    bool cast = false;
+    if (isa<LoadInst>(ii)) {
+        LoadInst *li = dyn_cast<LoadInst>(ii);
+        Instruction *pi = dyn_cast<Instruction>(li->getPointerOperand());
+        if (!pi)
+            return;
+        worklist.push_back(pi);
+    }
+    else if (isa<StoreInst>(ii)) {
+        StoreInst *si = dyn_cast<StoreInst>(ii);
+        Instruction *pi = dyn_cast<Instruction>(si->getPointerOperand());
+        if (!pi)
+            return;
+        worklist.push_back(pi);
+    }
+    else
+        return;
 
     while(worklist.size()) {
         Instruction *v = worklist.front();
@@ -197,21 +220,22 @@ void ppac::collect_internal_source_type(GetElementPtrInst *gi, InstructionSet* i
             continue;
 
         while(uselist.size()) {
-            Instruction *next = uselist.front();
-            if (!dt->dominates(v, next))
-                uselist.pop_front();
-            else
-                break;
+        Instruction *next = uselist.front();
+        if (!dt->dominates(v, next))
+            uselist.pop_front();
+        else
+            break;
         }
         uselist.push_front(v);
 
-        if (isa<GetElementPtrInst>(v) || isa<CastInst>(v) || isa<BinaryOperator>(v)) {
-            for (Value *u : v->operands()) {
-                Instruction *ui = dyn_cast<Instruction>(u);
-                if (!ui)
-                    continue;
-                worklist.push_front(ui);
-            }
+        if (isa<GetElementPtrInst>(v) || isa<CastInst>(v)) {
+            Value *u = (dyn_cast<Instruction>(v))->getOperand(0);
+            Instruction *ui = dyn_cast<Instruction>(u);
+            if (!ui)
+                continue;
+            worklist.push_front(ui);
+            if (isa<CastInst>(v))
+                cast = true;
             continue;
         }
 
@@ -222,50 +246,66 @@ void ppac::collect_internal_source_type(GetElementPtrInst *gi, InstructionSet* i
         }
 
         if (isa<LoadInst>(v)) {
-            Value *src = cast<LoadInst>(v)->getPointerOperand();
+            LoadInst *li = dyn_cast<LoadInst>(v);
 
+            if (chk_set->count(li)) {
+                // This load is also a privilegd instruction.
+                // We can use the analysis result of this instruction.
+                _collect_internal_source_type(li, chk_set, dt, mssa);
+                TypeSet *link_tys = i2ty[li];
+                if (!link_tys) {
+                    errs() << "No analysis result from parent?\n";
+                    continue;
+                }
+                if (!cast) {
+                    // There was no cast. We can use this type result directly.
+                    if (link_tys->size() == 0) {
+                        if (i2vl_trans[li]->size() == 0) {
+                        errs() << "    " << *li << "\n";
+                        errs() << "    : No source type found?\n";
+                        }
+                        // let's hope we can get soruce by inter-function analysis
+                        continue;
+                    } else{
+                        Type *parent_ty = li->getPointerOperandType();
+                        // check if there is other type used.
+                        // for now, print other types.
+                        for (auto psty : *link_tys) {
+                            if (psty != parent_ty)
+                                errs() << "Parent source type: " << *psty << "\n";
+                        }
+                        continue;
+                    }
+                }
+
+                else {
+                    // TODO: type cast between our dereference and this load.
+                    continue;
+                }
+            }
+
+            // This load is not priivleged type...
+            Value *src = li->getPointerOperand();
+           
             // it is using data pointer stored in stack.
             // this includes function arguments
             if (isa<AllocaInst>(src)) {
-                find_stack_src_ty(cast<LoadInst>(v), ts, dt, mssa);
+                find_stack_src_ty(dyn_cast<LoadInst>(v), ts, dt, mssa);
                 continue;
             }
 
             if (isa<GetElementPtrInst>(src)) {
-                GetElementPtrInst *gsrc = cast<GetElementPtrInst>(src);
-                collect_internal_source_type(gsrc, is, dt, mssa);
+                // TODO: Non privileged GEP instruction?
+                GetElementPtrInst *gsrc = dyn_cast<GetElementPtrInst>(src);
                 Type *parent_ty = gsrc->getSourceElementType();
-
+                errs() << "Why non privilegd GEP?\n";
+                errs() << *gsrc << "\n";
                 //TODO: getelementptr array type
                 if (isa<ArrayType>(parent_ty)) {
                     continue;
                 }
-                if (!isa<StructType>(parent_ty))
+                if (isa<StructType>(parent_ty))
                     continue;
-
-                // whether or not parent struct is privileged type,
-                // check if the source can be other type than the original parent type.
-                collect_internal_source_type(gsrc, is, dt, mssa);
-                TypeSet *link_tys = i2ty[gsrc];
-
-                if (link_tys->size() == 0) {
-                    if (i2vl_trans[gsrc]->size() == 0) {
-                        errs() << "    " << *gsrc << "\n";
-                        errs() << "    : No source type found?\n";
-                    }
-                    // let's hope we can get soruce by inter-function analysis
-                    continue;
-                } else {
-                    // parent struct using parent type source!
-                    if (link_tys->count(parent_ty))
-                        ts->insert(sty);
-                    // check if there is other type used.
-                    // for now, print other types.
-                    for (auto psty : *link_tys) {
-                        if (psty != parent_ty)
-                            errs() << "Parent used type: " << *psty << "\n";
-                    }
-                }
             }
         }
     }
@@ -330,6 +370,10 @@ void ppac::find_stack_src_ty(LoadInst *li, TypeSet *ts,
                 break;
             }
         }
+        if (isa<LoadInst>(v)) {
+            worklist.push_back(cast<LoadInst>(v)->getPointerOperand());
+            continue;
+        }
         if (isa<AllocaInst>(v)) {
             // Allocated stack object!
             ts->insert(cast<AllocaInst>(v)->getAllocatedType());
@@ -391,7 +435,7 @@ void ppac::getAnalysisUsage(AnalysisUsage &AU) const
 }
 bool ppac::ppacPass(Module &module)
 {
-    collect_privileged_instructions(module);
+    process_ppac(module);
 }
 
 static RegisterPass<ppac>
