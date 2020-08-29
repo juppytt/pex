@@ -73,6 +73,10 @@ private:
     void find_stack_src_ty(LoadInst*, TypeSet*, DominatorTree*, MemorySSA*);
     void check_cast_usage(GetElementPtrInst*);
     void initialize_alloc_funcs();
+
+    bool is_elem_ptr(Type*, Type*);
+    bool is_elem_struct(Type*, Type*);
+    bool is_parent_like_type(Type*, Type*);
     void print_gep_usage(GetElementPtrInst*);
     void print(InstructionList&);
     void dump_i2ty();

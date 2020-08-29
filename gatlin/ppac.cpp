@@ -196,12 +196,14 @@ void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_se
     InstructionList worklist;
     InstructionList uselist;
     bool cast = false;
+    Type *curr_ty;
     if (isa<LoadInst>(ii)) {
         LoadInst *li = dyn_cast<LoadInst>(ii);
         Instruction *pi = dyn_cast<Instruction>(li->getPointerOperand());
         if (!pi)
             return;
         worklist.push_back(pi);
+        curr_ty = li->getPointerOperandType();
     }
     else if (isa<StoreInst>(ii)) {
         StoreInst *si = dyn_cast<StoreInst>(ii);
@@ -209,6 +211,7 @@ void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_se
         if (!pi)
             return;
         worklist.push_back(pi);
+        curr_ty = si->getPointerOperandType();
     }
     else
         return;
@@ -236,12 +239,15 @@ void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_se
             worklist.push_front(ui);
             if (isa<CastInst>(v))
                 cast = true;
+            if (isa<GetElementPtrInst>(v))
+                curr_ty = dyn_cast<GetElementPtrInst>(v)->getPointerOperandType();
             continue;
         }
 
         // data structure stored in stack
         if (isa<AllocaInst>(v)) {
-            // Let's ignore stack object dereference.
+            // TODO: Let's ignore stack object dereference.
+            ts->insert(nullptr);
             continue;
         }
 
@@ -267,13 +273,22 @@ void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_se
                         // let's hope we can get soruce by inter-function analysis
                         continue;
                     } else{
-                        Type *parent_ty = li->getPointerOperandType();
+                        Type *parent_ty = li->getType();
+
                         // check if there is other type used.
                         // for now, print other types.
                         for (auto psty : *link_tys) {
-                            if (psty != parent_ty)
+                            if (psty == nullptr)
+                                errs() << "Parent source type: stack obj\n";
+                            else if (psty != parent_ty)
                                 errs() << "Parent source type: " << *psty << "\n";
                         }
+                        errs() << "we got parent analysis\n";
+                        errs() << "parent: " << *li << "\n";
+                        errs() << "origin: " << *ii << "\n";
+                        errs() << "curr_ty: " << *curr_ty << "\n";
+                        if (is_parent_like_type(curr_ty, parent_ty))
+                            ts->insert(curr_ty);
                         continue;
                     }
                 }
@@ -386,7 +401,48 @@ void ppac::find_stack_src_ty(LoadInst *li, TypeSet *ts,
         }
     }
 
+}
 
+bool ppac::is_elem_ptr(Type *child, Type *parent) {
+    if (child == parent)
+        return true;
+
+    Type *strip_ty = parent;
+
+    while(true) {
+        PointerType *strip_ptr = dyn_cast<PointerType>(strip_ty);
+        if (!strip_ptr)
+            break;
+        strip_ty = strip_ptr->getElementType();
+        if (child == strip_ty)
+            return true;
+    }
+    return false;
+}
+
+bool ppac::is_elem_struct(Type *child, Type *parent) {
+    Type *strip_ty = parent;
+
+    StructType *parent_str = dyn_cast<StructType>(strip_ty);
+    if (!parent_str)
+        return false;
+
+    for (auto elem : parent_str->elements()) {
+        if (is_elem_ptr(child, elem))
+            return true;
+        if (isa<StructType>(elem)) {
+            if (is_elem_struct(child, elem))
+                return true;
+        }
+    }
+    return false;
+}
+bool ppac::is_parent_like_type(Type *child, Type *parent) {
+    if (is_elem_ptr(child, parent))
+        return true;
+    if (is_elem_struct(child, parent))
+        return true;
+    return false;
 }
 void ppac::check_cast_usage(GetElementPtrInst *gi)
 {
@@ -409,7 +465,10 @@ void ppac::dump_i2ty() {
         errs() << *(iter.first) << "\n";
         errs() << "  Types: ";
         for (auto ty : *(iter.second)) {
-            errs() << *ty << ", ";
+            if (ty == nullptr)
+                errs() << "stack obj, ";
+            else
+                errs() << *ty << ", ";
         }
         errs() <<"\n\n";
     }
