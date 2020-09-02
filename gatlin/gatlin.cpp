@@ -75,6 +75,70 @@ void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& curren
   return;
 }
 
+void gatlin::collect_crit_cast(Module &M, StructTypeMap &crit_map) {
+    TypeToFunctions T2Fc;
+    Type2ChkInst T2Ci;
+
+    for (auto smap : crit_map) {
+        T2Fc[smap.second] = new FunctionSet();
+        T2Ci[smap.second] = new InstructionSet();
+    }
+    for (Module::iterator func = M.begin(), f_end = M.end();
+        func != f_end; ++func)
+    {
+        for(Function::iterator fi = func->begin(), fe = func->end(); fi != fe; ++fi)
+        {   
+            BasicBlock* bb = dyn_cast<BasicBlock>(fi);
+            for (BasicBlock::iterator ii = bb->begin(), ie = bb->end(); ii!=ie; ++ii)
+            {
+                Instruction* si = dyn_cast<Instruction>(ii);
+                CastInst *ci = dyn_cast<CastInst>(ii);
+                // for now, only handle direct functions.
+                if (ci) {
+                    PointerType *srcPtrTy = dyn_cast<PointerType>(ci->getSrcTy());
+                    PointerType *dstPtrTy = dyn_cast<PointerType>(ci->getDestTy());
+                    if (!srcPtrTy || !dstPtrTy)
+                        continue;
+
+                    StructType *srcTy = dyn_cast<StructType>(srcPtrTy->getElementType());
+                    Type *dstTy = dstPtrTy->getElementType();
+                    //StructType *dstTy = dyn_cast<StructType>(ci->getDestTy());
+                    //if (!srcTy || !dstTy)
+                    if (!srcTy)
+                        continue;
+                    for (auto smap : crit_map) {
+                        if (get_struct_name(srcTy->getName()) == get_struct_name(smap.second->getName())) {
+                            T2Fc[smap.second]->insert(ci->getFunction());
+                            T2Ci[smap.second]->insert(ci);
+                            continue;
+                        }
+                    }  
+                }
+
+            }
+        }
+    }
+    
+    for (auto smap : crit_map) {
+        errs() << "Type: " << (smap.second)->getName() << "\n";
+        for (auto func : *T2Fc[smap.second]) {
+            errs() << "  - " << func->getName() << "\n";
+            for (auto ii : *T2Ci[smap.second]) {
+                int count = 0;
+                if (ii->getFunction() == func) {
+                    if (count == 8) {
+                        errs() << "      ...\n\n";
+                        break;
+                    }
+                    errs() << "    * " << *ii << "\n";
+                    count++;
+                }
+            }
+        }
+    }
+    return;
+}
+
 void gatlin::analyze_crit_struct(Module &M)
 {
     // TODO
@@ -114,6 +178,9 @@ void gatlin::analyze_crit_struct(Module &M)
     errs() << "Total struct    : " << all_structs.size() << "\n";
     errs() << "Critical struct : " << crit_struct_map.size() << "\n";
     errs() << "Parent struct   : " << crit_parent_map.size() << "\n";
+
+
+    collect_crit_cast(M, crit_parent_map);
 
 //    Type2ChkInst crit_struct_read, crit_struct_write, crit_parent_read, crit_parent_write;
 //    unsigned total_read = 0, total_write = 0;

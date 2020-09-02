@@ -186,6 +186,7 @@ class gatlin : public ModulePass
         void figure_out_ldst_using_type_name(std::string, Module&, InstructionSet*, InstructionSet*);
         void figure_out_gep_using_type_name(InstructionSet&, std::string, Module&);
 
+        void collect_crit_cast(Module&, StructTypeMap&);
 
 
         void dump_structs(StructTypeMap&);
