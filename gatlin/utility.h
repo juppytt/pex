@@ -79,6 +79,7 @@ void initialize_gatlin_sets(StringRef knob_skip_func_list,
 extern SimpleSet* crit_structs;
 
 void initialize_crit_struct(StringRef knob_crit_sturct_list);
+bool is_same_struct(StructType *, StructType*);
 std::string get_struct_name(std::string);
 #endif //_GATLING_UTILITY_
 

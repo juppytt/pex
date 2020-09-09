@@ -133,7 +133,7 @@ void ppac::process_ppac(Module &module)
         errs() << "\n";
 
         collect_privileged_instructions(func, &dt, chk_set);
-        collect_internal_source_type(func, chk_set, &dt, &mssa);
+        collect_internal_source_type(func, chk_set, &dt, &mssa, aa);
 
     }
 
@@ -144,8 +144,7 @@ void ppac::process_ppac(Module &module)
 void ppac::collect_privileged_instructions(Function *func, DominatorTree *dt, InstructionSet *chk_set)
 {
     for (Function::iterator bi = func->begin(), be = func->end();
-         bi != be; ++bi)
-    {
+         bi != be; ++bi) {
         BasicBlock* bb = dyn_cast<BasicBlock>(bi);
         for (BasicBlock::iterator ii = bb->begin(), ie = bb->end();
              ii != ie; ++ii)
@@ -171,15 +170,19 @@ void ppac::collect_privileged_instructions(Function *func, DominatorTree *dt, In
 }
 
 void ppac::collect_internal_source_type(Function *func, InstructionSet *chk_set,
-                                        DominatorTree *dt, MemorySSA *mssa) {
+                                        DominatorTree *dt, MemorySSA *mssa,
+                                        AliasAnalysis *aa) {
 
     for (auto ii : *chk_set) {
-        _collect_internal_source_type(ii, chk_set, dt, mssa);
+        _collect_internal_source_type(ii, chk_set, dt, mssa, aa);
     }
 }
-void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_set,
-                                        DominatorTree *dt,
-                                        MemorySSA *mssa) {
+
+void ppac::_collect_internal_source_type(Instruction *ii,
+                                         InstructionSet *chk_set,
+                                         DominatorTree *dt,
+                                         MemorySSA *mssa,
+                                         AliasAnalysis *aa) {
     TypeSet *ts = i2ty[ii];
     ValueSet *vs_local = i2vl_local[ii];
     ValueSet *vs_trans = i2vl_trans[ii];
@@ -192,30 +195,48 @@ void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_se
         i2vl_trans[ii] = vs_trans;
     }
 
+    MemoryUseOrDef *ma = mssa->getMemoryAccess(ii);
+    if (isa<MemoryUse>(ma)) {
+        Instruction *usei = cast<MemoryUse>(ma)->getMemoryInst();
+        if (!usei) {
+            if (isa<StoreInst>(usei)) {
+                __collect_internal_source_type(ts,
+                    cast<Instruction>(cast<StoreInst>(usei)->getPointerOperand()), chk_set, dt, mssa, aa);
+            }
+        }
+    }
+
+    Instruction *srci;
+    if (isa<LoadInst>(ii)) {
+        LoadInst *li = dyn_cast<LoadInst>(ii);
+        srci = dyn_cast<Instruction>(li->getPointerOperand());
+        if (!srci)
+            return;
+    }
+    else if (isa<StoreInst>(ii)) {
+        StoreInst *si = dyn_cast<StoreInst>(ii);
+        srci = dyn_cast<Instruction>(si->getPointerOperand());
+        if (!srci)
+            return;
+    }
+    else
+        return;
+    __collect_internal_source_type(ts, srci, chk_set, dt, mssa, aa);
+}
+
+void ppac::__collect_internal_source_type(TypeSet *ts,
+                                         Instruction *srci,
+                                         InstructionSet *chk_set,
+                                         DominatorTree *dt,
+                                         MemorySSA *mssa,
+                                         AliasAnalysis *aa) {
+
     InstructionSet visited;
     InstructionList worklist;
     InstructionList uselist;
     bool cast = false;
-    Type *curr_ty;
-    if (isa<LoadInst>(ii)) {
-        LoadInst *li = dyn_cast<LoadInst>(ii);
-        Instruction *pi = dyn_cast<Instruction>(li->getPointerOperand());
-        if (!pi)
-            return;
-        worklist.push_back(pi);
-        curr_ty = li->getPointerOperandType();
-    }
-    else if (isa<StoreInst>(ii)) {
-        StoreInst *si = dyn_cast<StoreInst>(ii);
-        Instruction *pi = dyn_cast<Instruction>(si->getPointerOperand());
-        if (!pi)
-            return;
-        worklist.push_back(pi);
-        curr_ty = si->getPointerOperandType();
-    }
-    else
-        return;
-
+    Type *curr_ty = srci->getType();
+    worklist.push_back(srci);
     while(worklist.size()) {
         Instruction *v = worklist.front();
         worklist.pop_front();
@@ -257,10 +278,10 @@ void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_se
             if (chk_set->count(li)) {
                 // This load is also a privilegd instruction.
                 // We can use the analysis result of this instruction.
-                _collect_internal_source_type(li, chk_set, dt, mssa);
+                _collect_internal_source_type(li, chk_set, dt, mssa, aa);
                 TypeSet *link_tys = i2ty[li];
                 if (!link_tys) {
-                    errs() << "No analysis result from parent?\n";
+                    errs () << "No analysis result from parent?\n";
                     continue;
                 }
                 if (!cast) {
@@ -285,7 +306,6 @@ void ppac::_collect_internal_source_type(Instruction *ii, InstructionSet *chk_se
                         }
                         errs() << "we got parent analysis\n";
                         errs() << "parent: " << *li << "\n";
-                        errs() << "origin: " << *ii << "\n";
                         errs() << "curr_ty: " << *curr_ty << "\n";
                         if (is_parent_like_type(curr_ty, parent_ty))
                             ts->insert(curr_ty);
@@ -365,6 +385,8 @@ void ppac::find_src_ty(MemoryDef *def, TypeSet *ts)
         return;
     }
 
+    errs() << "find_src_ty\n";
+    errs() << *defsi << "\n";
     Value *stval = defsi->getValueOperand();
     ValueList worklist;
     worklist.push_back(stval);
@@ -372,6 +394,7 @@ void ppac::find_src_ty(MemoryDef *def, TypeSet *ts)
     while(worklist.size()) {
         Value *v = worklist.front();
         worklist.pop_front();
+        errs() << "  " << *v << "\n";
         if (isa<ConstantData>(v) || isa<GlobalValue>(v)) {
             ts->insert(v->getType());
             continue;
@@ -408,6 +431,7 @@ void ppac::find_src_ty(MemoryDef *def, TypeSet *ts)
             ts->insert(v->getType());
             break;
         }
+
     }
 
 }

@@ -1314,6 +1314,12 @@ std::string get_struct_name(std::string tname)
         return tname.substr(0, tname.find_last_of("."));
     return tname;
 }
+
+bool is_same_struct(StructType *s1, StructType *s2) {
+    if (get_struct_name(s1->getName().str()) == get_struct_name(s2->getName().str()))
+        return true;
+    return false;
+}
 ////////////////////////////////////////////////////////////////////////////////
 void dump_callstack(InstructionList& callstk)
 {

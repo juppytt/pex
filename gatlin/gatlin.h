@@ -177,7 +177,8 @@ class gatlin : public ModulePass
         void analyze_crit_struct(Module&);
         void build_crit_struct_map(Module&, StructTypeMap&);
         void find_crit_parent_struct(Module&, StructTypeMap&, STy2PTy&, STy2PTy&);
-        void _find_crit_parent_struct(StructType*, StructTypeMap&, StringSet&, STy2PTy&, STy2PTy&);
+        void _find_crit_parent_struct(StructType*, StructTypeMap&, StringSet&,
+                                              STy2PTy&, STy2PTy&, TypeList&);
         void collect_critical_function_params();
 
         void count_mem_access(Module&, unsigned&, unsigned&);

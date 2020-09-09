@@ -65,10 +65,11 @@ private:
     GEP_TYPE is_interesting_gep(GetElementPtrInst*, DominatorTree*, InstructionSet*);
     void collect_privileged_instructions(Function*, DominatorTree*, InstructionSet*);
     void collect_internal_source_type(Function*, InstructionSet*,
-                                      DominatorTree*, MemorySSA*);
+                                      DominatorTree*, MemorySSA*, AliasAnalysis*);
     void _collect_internal_source_type(Instruction*, InstructionSet*,
-                                       DominatorTree*, MemorySSA*);
-
+                                       DominatorTree*, MemorySSA*, AliasAnalysis*);
+    void __collect_internal_source_type(TypeSet*, Instruction*, InstructionSet*,
+                                       DominatorTree*, MemorySSA*, AliasAnalysis*);
     GEP_TYPE find_gep_type(GetElementPtrInst*, bool, DominatorTree*, InstructionSet*);
     void find_stack_src_ty(LoadInst*, TypeSet*, DominatorTree*, MemorySSA*);
     void find_src_ty(MemoryDef *def, TypeSet *ts);

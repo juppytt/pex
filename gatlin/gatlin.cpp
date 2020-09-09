@@ -38,6 +38,7 @@ std::list<int> x_dbg_idx;
 std::mutex x_lock;
 
 #define PEX 0
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // juhee
@@ -220,17 +221,25 @@ void gatlin::find_crit_parent_struct(Module &M, StructTypeMap& crit_parent, \
                                      STy2PTy &st2pt_n, STy2PTy &st2pt_p)
 {
     StringSet st_visited;
+    TypeList struct_list;
     for (auto Cname : *crit_structs)
     {
         StructType *CTy = M.getTypeByName(Cname);
-        _find_crit_parent_struct(CTy, crit_parent, st_visited, st2pt_n, st2pt_p);
+        struct_list.push_back(CTy);
+    }
+
+    while (struct_list.size()) {
+        StructType *sty = cast<StructType>(struct_list.front());
+        struct_list.pop_front();
+
+        _find_crit_parent_struct(sty, crit_parent, st_visited, st2pt_n, st2pt_p, struct_list);
 
     }
 }
 
 void gatlin::_find_crit_parent_struct(StructType *cty, StructTypeMap& crit_parent, \
                                       StringSet &visited,
-                                      STy2PTy &st2pt_n, STy2PTy &st2pt_p)
+                                      STy2PTy &st2pt_n, STy2PTy &st2pt_p, TypeList &list)
 {
     std::string sname = get_struct_name(cty->getName().str());
 
@@ -238,6 +247,10 @@ void gatlin::_find_crit_parent_struct(StructType *cty, StructTypeMap& crit_paren
         return;
     visited.insert(sname);
     crit_parent.insert({sname, cty});
+
+    if (std::find(list.begin(), list.end(), cty) != list.end())
+        list.push_back(cty);
+
     StructTypeMap* sln = st2pt_n[cty];
     if (sln==NULL) {
         sln = new StructTypeMap;
@@ -255,18 +268,24 @@ void gatlin::_find_crit_parent_struct(StructType *cty, StructTypeMap& crit_paren
         for (auto *ety : sty->elements())
         {
             // nesting parent
-            if (ety == cty) {
+            StructType *sety = dyn_cast<StructType>(ety);
+
+            if (sety && is_same_struct(sety, cty)) {
                 if (!crit_parent.count(sname)) {
-                    _find_crit_parent_struct(sty, crit_parent, visited, st2pt_n, st2pt_p);
+                    _find_crit_parent_struct(sty, crit_parent, visited, st2pt_n, st2pt_p, list);
                 }
                 if (!sln->count(sname))
                     sln->insert({sname, sty});
             }
             // pointing parent
             else if (ety->isPointerTy()) {
-                if (ety->getPointerElementType() == cty) {
+                StructType *pety = dyn_cast<StructType>(ety->getPointerElementType());
+                if (!pety)
+                    continue;
+
+                if (is_same_struct(pety,cty)) {
                     if (!crit_parent.count(sname)) {
-                        _find_crit_parent_struct(sty, crit_parent, visited, st2pt_n, st2pt_p);
+                        _find_crit_parent_struct(sty, crit_parent, visited, st2pt_n, st2pt_p, list);
                     }
                     if (!slp->count(sname))
                         slp->insert({sname, sty});
@@ -504,7 +523,7 @@ void gatlin::dump_structs(StructTypeMap &ss, STy2PTy &nest, STy2PTy &point)
             if (p_n->second->size() > 0) {
                 errs() << "                  nest:\n";
                 for (auto iter2 : *p_n->second)
-                    errs() << "             " << iter2.first << "\n";
+                    errs() << "                   " << iter2.first << "\n";
             }
             if (p_p->second->size() > 0) {
                 errs() << "                  point:\n";
