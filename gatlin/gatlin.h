@@ -175,10 +175,13 @@ class gatlin : public ModulePass
         //juhee
         void crit_type_field_in_func_collect(Function*, Type2Fields&, InstructionList& chks);
         void analyze_crit_struct(Module&);
+        void analyze_crit_cast(StructTypeMap&);
+        void find_internal_usage(Function*, Instruction*, DominatorTree*);
+        void dump_crit_cast(StructTypeMap &);
         void build_crit_struct_map(Module&, StructTypeMap&);
         void find_crit_parent_struct(Module&, StructTypeMap&, STy2PTy&, STy2PTy&);
         void _find_crit_parent_struct(StructType*, StructTypeMap&, StringSet&,
-                                              STy2PTy&, STy2PTy&, TypeList&);
+                                      STy2PTy&, STy2PTy&, TypeList&);
         void collect_critical_function_params();
 
         void count_mem_access(Module&, unsigned&, unsigned&);
@@ -228,7 +231,7 @@ class gatlin : public ModulePass
 
         void getAnalysisUsage(AnalysisUsage &au) const override
         {
-            //au.addRequired<AAResultsWrapperPass>();
+            au.addRequired<AAResultsWrapperPass>();
             //au.addRequired<TargetLibraryInfoWrapperPass>();
             //au.addRequired<ScalarEvolutionWrapperPass>();
             au.setPreservesAll();
@@ -322,7 +325,10 @@ class gatlin : public ModulePass
         //juhee
         FunctionSet type_collected_functions;
         StructTypeSet all_structs;
-       
+
+        TypeToFunctions T2Fc;
+        Type2ChkInst T2Ci;
+        Inst2Val Ci2Val;
     private:
 /*
  * aux helper functions

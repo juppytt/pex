@@ -77,8 +77,6 @@ void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& curren
 }
 
 void gatlin::collect_crit_cast(Module &M, StructTypeMap &crit_map) {
-    TypeToFunctions T2Fc;
-    Type2ChkInst T2Ci;
 
     for (auto smap : crit_map) {
         T2Fc[smap.second] = new FunctionSet();
@@ -115,11 +113,12 @@ void gatlin::collect_crit_cast(Module &M, StructTypeMap &crit_map) {
                         }
                     }  
                 }
-
             }
         }
     }
-    
+    return;
+}
+void gatlin::dump_crit_cast(StructTypeMap &crit_map) {
     for (auto smap : crit_map) {
         errs() << "Type: " << (smap.second)->getName() << "\n";
         for (auto func : *T2Fc[smap.second]) {
@@ -140,6 +139,81 @@ void gatlin::collect_crit_cast(Module &M, StructTypeMap &crit_map) {
     return;
 }
 
+
+void gatlin::find_internal_usage(Function *func, Instruction *srci,
+                                   DominatorTree *dt) {
+
+    InstructionSet visited;
+    InstructionList worklist;
+    InstructionList uselist;
+
+    worklist.push_back(srci);
+
+    while(worklist.size()) {
+        Instruction *ii = worklist.front();
+        worklist.pop_front();
+        if (visited.count(ii))
+            continue;
+        visited.insert(ii);
+
+        while(uselist.size()) {
+            Instruction *prev = uselist.back();
+            if (!dt->dominates(prev, ii))
+                uselist.pop_back();
+            else
+                break;
+        }
+        uselist.push_back(ii);
+
+        if (isa<GetElementPtrInst>(ii) || isa<CastInst>(ii)
+            || isa<BinaryOperator>(ii) || isa<PHINode>(ii) ) {
+            for (auto u : ii->users()) {
+                Instruction *ui = dyn_cast<Instruction>(ui);
+                if (ui)
+                    worklist.push_front(ui);
+            }
+        }
+        else if (isa<CallBase>(ii) || isa<ReturnInst>(ii)
+                 || isa<StoreInst>(ii) || isa<LoadInst>(ii)
+                 || isa<CmpInst>(ii) || isa<SwitchInst>(ii)) {
+
+            errs() << "    ";
+            for (auto u : uselist) {
+                errs() << cast<Instruction>(u)->getOpcodeName();
+                if (u != *(uselist.end()))
+                    errs() << " -> ";
+                else
+                    errs() << "\n";
+            }
+        }
+        else {
+            errs() << "    Undefined: " << *ii << "\n";
+
+            for (auto u : ii->users()) {
+                Instruction *ui = dyn_cast<Instruction>(ui);
+                if (ui)
+                    worklist.push_front(ui);
+            }
+            continue;
+        }
+    }
+}
+
+void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
+    for (auto smap : crit_map) {
+        errs() << "\nType: " << (smap.second)->getName() << "\n";
+        for (auto func : *T2Fc[smap.second]) {
+            errs() << "  - " << func->getName() << "\n";
+
+            DominatorTree dt(*func);
+            AliasAnalysis *aa = &getAnalysis<AAResultsWrapperPass>(*func).getAAResults();
+            for (auto ii : *T2Ci[smap.second]) {
+                find_internal_usage(func, ii, &dt);
+            }
+        }
+    }
+}
+
 void gatlin::analyze_crit_struct(Module &M)
 {
     // TODO
@@ -153,6 +227,13 @@ void gatlin::analyze_crit_struct(Module &M)
     // collect all struct types
 
     StringSet st_visited;
+
+    StructTypeMap crit_struct_map;
+    StructTypeMap crit_parent_map; // critical + their parents
+    STy2PTy st2pt_nest;
+    STy2PTy st2pt_point;
+    build_crit_struct_map(M, crit_struct_map);
+/*
     for (auto *STy : M.getIdentifiedStructTypes()) {
         if (!st_visited.count(get_struct_name(STy->getName().str()))) {
             if (STy->getName().startswith("union.anon") | STy->getName().startswith("struct.anon"))
@@ -161,13 +242,6 @@ void gatlin::analyze_crit_struct(Module &M)
         }
     }
 
-
-    StructTypeMap crit_struct_map;
-    StructTypeMap crit_parent_map; // critical + their parents
-    STy2PTy st2pt_nest;
-    STy2PTy st2pt_point;
-
-    build_crit_struct_map(M, crit_struct_map);
     errs() << "Initial structs\n";
     dump_structs(crit_struct_map);
 
@@ -179,9 +253,11 @@ void gatlin::analyze_crit_struct(Module &M)
     errs() << "Total struct    : " << all_structs.size() << "\n";
     errs() << "Critical struct : " << crit_struct_map.size() << "\n";
     errs() << "Parent struct   : " << crit_parent_map.size() << "\n";
-
+*/
+    crit_parent_map = crit_struct_map;
 
     collect_crit_cast(M, crit_parent_map);
+    analyze_crit_cast(crit_parent_map);
 
 //    Type2ChkInst crit_struct_read, crit_struct_write, crit_parent_read, crit_parent_write;
 //    unsigned total_read = 0, total_write = 0;

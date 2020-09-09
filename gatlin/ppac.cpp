@@ -243,6 +243,7 @@ void ppac::__collect_internal_source_type(TypeSet *ts,
         if (visited.count(v))
             continue;
 
+        visited.insert(v);
         while(uselist.size()) {
         Instruction *next = uselist.front();
         if (!dt->dominates(v, next))
