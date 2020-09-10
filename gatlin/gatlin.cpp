@@ -24,7 +24,7 @@ using namespace llvm;
 
 #include "knobs.h"
 #include "capstat.h"
-
+#include "llvm/Analysis/CFG.h"
 #include "module_duplicator.h"
 
 #include <thread>
@@ -162,6 +162,7 @@ void gatlin::dump_usage(Ty2StrListSet &usage) {
     }
 }
 
+
 void gatlin::find_internal_usage(Function *func, Instruction *srci,
                                    DominatorTree *dt, Ty2StrListSet &usage) {
 
@@ -188,7 +189,8 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
 
         while(uselist.size()) {
             Instruction *prev = uselist.back();
-            if (!dt->dominates(prev, ii))
+            //if (!dt->dominates(prev, ii))
+            if (!llvm::isPotentiallyReachable(prev, ii, nullptr, dt))
                 uselist.pop_back();
             else
                 break;
