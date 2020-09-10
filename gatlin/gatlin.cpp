@@ -218,7 +218,7 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
                     }
                     else
                         continue;
-                    if (count == uselist.size()) {
+                    if (ss == sl->end() || count == uselist.size()) {
                         isnew = 0;
                         break;
                     }
@@ -3232,7 +3232,7 @@ void gatlin::figure_out_gep_using_type_field(InstructionSet& workset,
  * callee of indirect call is reasoned by its type or struct
  */
 void gatlin::crit_func_collect(CallInst* cs, FunctionSet& current_crit_funcs,
-    			Type2Fields& current_t2fmaps, InstructionList& chks)
+        		Type2Fields& current_t2fmaps, InstructionList& chks)
 {
     //ignore inline asm
     if (cs->isInlineAsm())
