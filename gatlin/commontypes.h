@@ -75,4 +75,6 @@ typedef std::map<StructType*, StructTypeMap*> STy2PTy;
 typedef std::map<Function *, std::set<int>> FunctionIntMap;
 typedef std::map<Instruction*, TypeSet*> Inst2Type;
 typedef std::map<Instruction*, ValueSet*> Inst2Val;
+typedef std::unordered_set<StringList *> StringListSet;
+typedef std::map<Type *, StringListSet*> Ty2StrListSet;
 #endif//_COMMON_TYPES_

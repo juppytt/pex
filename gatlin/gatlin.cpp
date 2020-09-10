@@ -139,15 +139,46 @@ void gatlin::dump_crit_cast(StructTypeMap &crit_map) {
     return;
 }
 
+void gatlin::dump_usage(Ty2StrListSet &usage) {
+	for (auto umap : usage) {
+		errs() << "    Cast Type:  ";
+		if ((umap.first)->isStructTy())
+			errs() << (umap.first)->getStructName() << "\n";
+		else
+			errs() << *(umap.first) << "\n";
+		for (auto slist : *(umap.second)) {
+			errs() << "      ";
+			int count = 0;
+			for (auto ss : *slist) {
+				errs() << ss;
+				++count;
+				if (count != slist->size())
+					errs() << "->";
+				else
+					errs() << "\n";
+			}
+		}
+		errs() <<"\n";
+
+	}
+}
 
 void gatlin::find_internal_usage(Function *func, Instruction *srci,
-                                   DominatorTree *dt) {
+                                   DominatorTree *dt, Ty2StrListSet &usage) {
 
     InstructionSet visited;
     InstructionList worklist;
     InstructionList uselist;
 
+		Type *castTy = cast<CastInst>(srci)->getDestTy();
+		StringListSet *usageset = usage[castTy];
+		if (usageset == NULL) {
+			usageset = new StringListSet;
+			usage[castTy] = usageset;
+		}
+		errs() << "1\n";
     worklist.push_back(srci);
+
 
     while(worklist.size()) {
         Instruction *ii = worklist.front();
@@ -155,6 +186,7 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
         if (visited.count(ii))
             continue;
         visited.insert(ii);
+				//errs() << "    " << *ii << "\n";
 
         while(uselist.size()) {
             Instruction *prev = uselist.back();
@@ -168,33 +200,59 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
         if (isa<GetElementPtrInst>(ii) || isa<CastInst>(ii)
             || isa<BinaryOperator>(ii) || isa<PHINode>(ii) ) {
             for (auto u : ii->users()) {
-                Instruction *ui = dyn_cast<Instruction>(ui);
-                if (ui)
-                    worklist.push_front(ui);
-            }
+                if (isa<Instruction>(u)){
+									worklist.push_front(cast<Instruction>(u));
+								}
+						}
         }
         else if (isa<CallBase>(ii) || isa<ReturnInst>(ii)
                  || isa<StoreInst>(ii) || isa<LoadInst>(ii)
                  || isa<CmpInst>(ii) || isa<SwitchInst>(ii)) {
 
-            errs() << "    ";
-            for (auto u : uselist) {
-                errs() << cast<Instruction>(u)->getOpcodeName();
-                if (u != *(uselist.end()))
-                    errs() << " -> ";
-                else
-                    errs() << "\n";
-            }
+					int isnew = 1;
+					errs() << " hi 1\n";
+					for (StringList *sl : *usageset) {	
+						auto ss = sl->begin();
+						errs() << " hi 2\n";
+						int count = 0;
+						for (auto ui : uselist) {
+							if (ss->compare(ui->getOpcodeName()) == 0) {
+								++ss; ++count;
+							}
+							else
+								continue;
+							if (count == uselist.size()) {
+								isnew = 0;
+								break;
+							}
+							if (isnew == 0)
+								break;
+						}
+					}
+					if (isnew > 0) {
+
+						StringList *newUsage = new StringList;
+						errs() << " hi 3\n";
+						for (auto ui : uselist) {
+							errs() << ui->getOpcodeName() << "  ";
+							newUsage->push_back(ui->getOpcodeName());
+						}
+						errs() << "\n";
+						for (auto us : *newUsage)
+							errs() << us << "  ";
+						errs() << "\n";
+						usageset->insert(newUsage);
+					}
+
         }
         else {
-            errs() << "    Undefined: " << *ii << "\n";
+            errs() << "    Undefined: "  << *ii << "\n";
 
-            for (auto u : ii->users()) {
+            /*for (auto u : ii->users()) {
                 Instruction *ui = dyn_cast<Instruction>(ui);
                 if (ui)
                     worklist.push_front(ui);
-            }
-            continue;
+            }*/
         }
     }
 }
@@ -203,13 +261,15 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
     for (auto smap : crit_map) {
         errs() << "\nType: " << (smap.second)->getName() << "\n";
         for (auto func : *T2Fc[smap.second]) {
-            errs() << "  - " << func->getName() << "\n";
+            errs() << "  Function " << func->getName() << "\n";
 
+						Ty2StrListSet usageset;
             DominatorTree dt(*func);
             AliasAnalysis *aa = &getAnalysis<AAResultsWrapperPass>(*func).getAAResults();
             for (auto ii : *T2Ci[smap.second]) {
-                find_internal_usage(func, ii, &dt);
+                find_internal_usage(func, ii, &dt, usageset);
             }
+						dump_usage(usageset);
         }
     }
 }

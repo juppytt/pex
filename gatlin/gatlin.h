@@ -176,9 +176,10 @@ class gatlin : public ModulePass
         void crit_type_field_in_func_collect(Function*, Type2Fields&, InstructionList& chks);
         void analyze_crit_struct(Module&);
         void analyze_crit_cast(StructTypeMap&);
-        void find_internal_usage(Function*, Instruction*, DominatorTree*);
+        void find_internal_usage(Function*, Instruction*, DominatorTree*, Ty2StrListSet&);
         void dump_crit_cast(StructTypeMap &);
-        void build_crit_struct_map(Module&, StructTypeMap&);
+        void dump_usage(Ty2StrListSet &);
+				void build_crit_struct_map(Module&, StructTypeMap&);
         void find_crit_parent_struct(Module&, StructTypeMap&, STy2PTy&, STy2PTy&);
         void _find_crit_parent_struct(StructType*, StructTypeMap&, StringSet&,
                                       STy2PTy&, STy2PTy&, TypeList&);
@@ -276,7 +277,6 @@ class gatlin : public ModulePass
 
         //store indirect call site to its candidates
         ConstInst2Func idcs2callee;
-
         //all functions in the kernel
         FunctionSet all_functions;
 
