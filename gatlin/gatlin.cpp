@@ -140,27 +140,26 @@ void gatlin::dump_crit_cast(StructTypeMap &crit_map) {
 }
 
 void gatlin::dump_usage(Ty2StrListSet &usage) {
-	for (auto umap : usage) {
-		errs() << "    Cast Type:  ";
-		if ((umap.first)->isStructTy())
-			errs() << (umap.first)->getStructName() << "\n";
-		else
-			errs() << *(umap.first) << "\n";
-		for (auto slist : *(umap.second)) {
-			errs() << "      ";
-			int count = 0;
-			for (auto ss : *slist) {
-				errs() << ss;
-				++count;
-				if (count != slist->size())
-					errs() << "->";
-				else
-					errs() << "\n";
-			}
-		}
-		errs() <<"\n";
-
-	}
+    for (auto umap : usage) {
+        errs() << "    Cast Type:  ";
+        if ((umap.first)->isStructTy())
+            errs() << (umap.first)->getStructName() << "\n";
+        else
+            errs() << *(umap.first) << "\n";
+        for (auto slist : *(umap.second)) {
+            errs() << "      ";
+            int count = 0;
+            for (auto ss : *slist) {
+                errs() << ss;
+                ++count;
+                if (count != slist->size())
+                    errs() << "->";
+                else
+                    errs() << "\n";
+            }
+        }
+        errs() <<"\n";
+    }
 }
 
 void gatlin::find_internal_usage(Function *func, Instruction *srci,
@@ -170,13 +169,12 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
     InstructionList worklist;
     InstructionList uselist;
 
-		Type *castTy = cast<CastInst>(srci)->getDestTy();
-		StringListSet *usageset = usage[castTy];
-		if (usageset == NULL) {
-			usageset = new StringListSet;
-			usage[castTy] = usageset;
-		}
-		errs() << "1\n";
+    Type *castTy = cast<CastInst>(srci)->getDestTy();
+    StringListSet *usageset = usage[castTy];
+    if (usageset == NULL) {
+        usageset = new StringListSet;
+        usage[castTy] = usageset;
+    }
     worklist.push_back(srci);
 
 
@@ -186,7 +184,7 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
         if (visited.count(ii))
             continue;
         visited.insert(ii);
-				//errs() << "    " << *ii << "\n";
+        //errs() << "    " << *ii << "\n";
 
         while(uselist.size()) {
             Instruction *prev = uselist.back();
@@ -201,48 +199,41 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
             || isa<BinaryOperator>(ii) || isa<PHINode>(ii) ) {
             for (auto u : ii->users()) {
                 if (isa<Instruction>(u)){
-									worklist.push_front(cast<Instruction>(u));
-								}
-						}
+                    worklist.push_front(cast<Instruction>(u));
+                }
+            }
         }
         else if (isa<CallBase>(ii) || isa<ReturnInst>(ii)
                  || isa<StoreInst>(ii) || isa<LoadInst>(ii)
                  || isa<CmpInst>(ii) || isa<SwitchInst>(ii)) {
 
-					int isnew = 1;
-					errs() << " hi 1\n";
-					for (StringList *sl : *usageset) {	
-						auto ss = sl->begin();
-						errs() << " hi 2\n";
-						int count = 0;
-						for (auto ui : uselist) {
-							if (ss->compare(ui->getOpcodeName()) == 0) {
-								++ss; ++count;
-							}
-							else
-								continue;
-							if (count == uselist.size()) {
-								isnew = 0;
-								break;
-							}
-							if (isnew == 0)
-								break;
-						}
-					}
-					if (isnew > 0) {
+            int isnew = 1;
+            for (StringList *sl : *usageset) {
+                auto ss = sl->begin();
+                int count = 0;
+                for (auto ui : uselist) {
+                    std::string us = ui->getOpcodeName();
+                    if (ss->compare(us) == 0) {
+                        ++ss; ++count;
+                    }
+                    else
+                        continue;
+                    if (count == uselist.size()) {
+                        isnew = 0;
+                        break;
+                    }
+                    if (isnew == 0)
+                        break;
+                }
+            }
+            if (isnew > 0) {
 
-						StringList *newUsage = new StringList;
-						errs() << " hi 3\n";
-						for (auto ui : uselist) {
-							errs() << ui->getOpcodeName() << "  ";
-							newUsage->push_back(ui->getOpcodeName());
-						}
-						errs() << "\n";
-						for (auto us : *newUsage)
-							errs() << us << "  ";
-						errs() << "\n";
-						usageset->insert(newUsage);
-					}
+                StringList *newUsage = new StringList;
+                for (auto ui : uselist) {
+                    newUsage->push_back(ui->getOpcodeName());
+                }
+                usageset->insert(newUsage);
+            }
 
         }
         else {
@@ -263,13 +254,13 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
         for (auto func : *T2Fc[smap.second]) {
             errs() << "  Function " << func->getName() << "\n";
 
-						Ty2StrListSet usageset;
+            Ty2StrListSet usageset;
             DominatorTree dt(*func);
             AliasAnalysis *aa = &getAnalysis<AAResultsWrapperPass>(*func).getAAResults();
             for (auto ii : *T2Ci[smap.second]) {
                 find_internal_usage(func, ii, &dt, usageset);
             }
-						dump_usage(usageset);
+            dump_usage(usageset);
         }
     }
 }
