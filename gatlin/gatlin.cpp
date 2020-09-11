@@ -213,8 +213,19 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
             for (StringList *sl : *usageset) {
                 auto ss = sl->begin();
                 int count = 0;
+                Instruction *prev;
                 for (auto ui : uselist) {
                     std::string us = ui->getOpcodeName();
+                    if (isa<StoreInst>(ui)) {
+
+                        // prev == store destination
+                        if (prev == ui->getOperand(0))
+                            us = us.append("_src");
+                        // prev == store source
+                        else
+                            us = us.append("_dst");
+                    }
+                    prev = ui;
                     if (ss->compare(us) == 0) {
                         ++ss; ++count;
                     }
@@ -231,8 +242,17 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
             if (isnew > 0) {
 
                 StringList *newUsage = new StringList;
+                Instruction *prev;
                 for (auto ui : uselist) {
-                    newUsage->push_back(ui->getOpcodeName());
+                    std::string us = ui->getOpcodeName();
+                    if (isa<StoreInst>(ui)) {
+                        if (prev == ui->getOperand(0))
+                            us = us.append("_src");
+                        else
+                            us = us.append("_dst");
+                    }
+                    newUsage->push_back(us);
+                    prev = ui;
                 }
                 usageset->insert(newUsage);
             }
@@ -260,7 +280,8 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
             DominatorTree dt(*func);
             AliasAnalysis *aa = &getAnalysis<AAResultsWrapperPass>(*func).getAAResults();
             for (auto ii : *T2Ci[smap.second]) {
-                find_internal_usage(func, ii, &dt, usageset);
+                if (ii->getFunction() == func)
+                    find_internal_usage(func, ii, &dt, usageset);
             }
             dump_usage(usageset);
         }
