@@ -30,7 +30,7 @@ using namespace llvm;
 #include <thread>
 #include <mutex>
 #include <pthread.h>
-
+#include <string.h>
 char gatlin::ID;
 Instruction* x_dbg_ins;
 std::list<int> x_dbg_idx;
@@ -76,6 +76,9 @@ void gatlin::crit_type_field_in_func_collect(Function* func, Type2Fields& curren
   return;
 }
 
+// collect_crit_cast
+// : find cast instruction that is ctirical struct pointer type
+//
 void gatlin::collect_crit_cast(Module &M, StructTypeMap &crit_map) {
 
     for (auto smap : crit_map) {
@@ -99,19 +102,32 @@ void gatlin::collect_crit_cast(Module &M, StructTypeMap &crit_map) {
                     if (!srcPtrTy || !dstPtrTy)
                         continue;
 
-                    StructType *srcTy = dyn_cast<StructType>(srcPtrTy->getElementType());
+                    Type *srcTy = srcPtrTy->getElementType();
                     Type *dstTy = dstPtrTy->getElementType();
-                    //StructType *dstTy = dyn_cast<StructType>(ci->getDestTy());
-                    //if (!srcTy || !dstTy)
-                    if (!srcTy)
+                    StructType *srcStrTy = dyn_cast<StructType>(srcTy);
+                    StructType *dstStrTy = dyn_cast<StructType>(dstTy);
+
+                    if (!srcStrTy && !dstStrTy)
                         continue;
-                    for (auto smap : crit_map) {
-                        if (get_struct_name(srcTy->getName()) == get_struct_name(smap.second->getName())) {
-                            T2Fc[smap.second]->insert(ci->getFunction());
-                            T2Ci[smap.second]->insert(ci);
-                            continue;
+
+                    if (srcStrTy != 0) {
+                        for (auto smap : crit_map) {
+                            if (get_struct_name(srcStrTy->getName()) == get_struct_name(smap.second->getName())) {
+                                T2Fc[smap.second]->insert(ci->getFunction());
+                                T2Ci[smap.second]->insert(ci);
+                                break;
+                            }
                         }
-                    }  
+                    }
+                    if (dstStrTy != 0) {
+                        for (auto smap : crit_map) {
+                            if (get_struct_name(dstStrTy->getName()) == get_struct_name(smap.second->getName())) {
+                                T2Fc[smap.second]->insert(ci->getFunction());
+                                T2Ci[smap.second]->insert(ci);
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -163,7 +179,7 @@ void gatlin::dump_usage(Ty2StrListSet &usage) {
 }
 
 
-void gatlin::find_internal_usage(Function *func, Instruction *srci,
+void gatlin::find_internal_usage(Type *ty, Function *func, Instruction *srci,
                                    DominatorTree *dt, Ty2StrListSet &usage) {
 
     InstructionSet visited;
@@ -171,6 +187,11 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
     InstructionList uselist;
 
     Type *castTy = cast<CastInst>(srci)->getDestTy();
+    bool is_src = true;
+    if (is_same_struct_ptr(ty, castTy)) {
+        castTy = cast<CastInst>(srci)->getSrcTy();
+        is_src = false;
+    }
     StringListSet *usageset = usage[castTy];
     if (usageset == NULL) {
         usageset = new StringListSet;
@@ -210,6 +231,7 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
                  || isa<CmpInst>(ii) || isa<SwitchInst>(ii)) {
 
             int isnew = 1;
+            // insert string list to usageset if this is new
             for (StringList *sl : *usageset) {
                 auto ss = sl->begin();
                 int count = 0;
@@ -222,6 +244,11 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
                         if (prev == ui->getOperand(0))
                             us = us.append("_src");
                         // prev == store source
+                        else
+                            us = us.append("_dst");
+                    } else if (ui == srci) {
+                        if (is_src)
+                            us = us.append("_src");
                         else
                             us = us.append("_dst");
                     }
@@ -239,8 +266,9 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
                         break;
                 }
             }
-            if (isnew > 0) {
 
+            // this usage list is not found. insert it!
+            if (isnew > 0) {
                 StringList *newUsage = new StringList;
                 Instruction *prev;
                 for (auto ui : uselist) {
@@ -250,7 +278,13 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
                             us = us.append("_src");
                         else
                             us = us.append("_dst");
+                    } else if (ui == srci) {
+                        if (is_src)
+                            us = us.append("_src");
+                        else
+                            us = us.append("_dst");
                     }
+
                     newUsage->push_back(us);
                     prev = ui;
                 }
@@ -270,6 +304,19 @@ void gatlin::find_internal_usage(Function *func, Instruction *srci,
     }
 }
 
+void gatlin::analyze_void_cast(StructIdxMap &void_map) {
+    for (auto smap : void_map) {
+        errs() << "\nType: " << (smap.first)->getName() << " -  Idx: ";
+        errs() << smap.second << " : ";
+        errs() << *smap.first->getElementType(smap.second) << "\n";
+    }
+}
+
+void gatlin::analyze_void_field(Module &M) {
+    StructIdxMap void_field_map;
+    build_void_field_map(M, void_field_map);
+    analyze_void_cast(void_field_map);
+}
 void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
     for (auto smap : crit_map) {
         errs() << "\nType: " << (smap.second)->getName() << "\n";
@@ -281,12 +328,13 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
             AliasAnalysis *aa = &getAnalysis<AAResultsWrapperPass>(*func).getAAResults();
             for (auto ii : *T2Ci[smap.second]) {
                 if (ii->getFunction() == func)
-                    find_internal_usage(func, ii, &dt, usageset);
+                    find_internal_usage(smap.second, func, ii, &dt, usageset);
             }
             dump_usage(usageset);
         }
     }
 }
+
 
 void gatlin::analyze_crit_struct(Module &M)
 {
@@ -364,6 +412,20 @@ void gatlin::build_crit_struct_map(Module &M, StructTypeMap& struct_map)
     {
         StructType *CTy = M.getTypeByName(Cname);
         struct_map.insert({get_struct_name(CTy->getName().str()), CTy});
+    }
+}
+
+void gatlin::build_void_field_map(Module &M, StructIdxMap& struct_map)
+{
+    for (auto data : *void_fields)
+    {
+        StringRef sdata = StringRef(data);
+        auto split = sdata.split("-");
+        if (split.second != "") {
+            StructType *sty = M.getTypeByName(split.first);
+            int idx = std::stoi(split.second.str());
+            struct_map.insert({sty, idx});
+        }
     }
 }
 
@@ -684,7 +746,6 @@ void gatlin::dump_structs(StructTypeMap &ss, STy2PTy &nest, STy2PTy &point)
             errs() << "    " << iter.first << "\n";
         }
     }
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3801,6 +3862,10 @@ void gatlin::process_cpgf(Module& module)
         initialize_crit_struct(knob_crit_struct_list);
         analyze_crit_struct(module);
         delete crit_structs;
+    } else if(knob_analyze_void_cast) {
+        initialize_void_field(knob_void_field_list);
+        analyze_void_field(module);
+        delete void_fields;
     }
     else {
         //pass 1

@@ -77,9 +77,12 @@ void initialize_gatlin_sets(StringRef knob_skip_func_list,
 
 //juhee
 extern SimpleSet* crit_structs;
+extern SimpleSet* void_fields;
 
 void initialize_crit_struct(StringRef knob_crit_sturct_list);
-bool is_same_struct(StructType *, StructType*);
+void initialize_void_field(StringRef knob_void_field_list);
+bool is_same_struct(StructType *, StructType *);
+bool is_same_struct_ptr(Type *, Type *);
 std::string get_struct_name(std::string);
 #endif //_GATLING_UTILITY_
 

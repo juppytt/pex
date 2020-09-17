@@ -1302,9 +1302,16 @@ void initialize_crit_struct(StringRef knob_crit_struct_list)
                                    std::end(_builtin_crit_struct));
     crit_structs = new SimpleSet(knob_crit_struct_list, builtin_crit_struct);
     llvm::errs() << "    - Critical structs, total: " << crit_structs->size() << "\n";
-    if (!crit_structs->use_builtin())
-        llvm::errs()<<"    - Critical structs, total:"<<crit_structs->size()<<"\n";
+}
 
+SimpleSet *void_fields;
+void initialize_void_field(StringRef knob_void_field_list)
+{
+    llvm::errs()<<"Load void field list...\n";
+    StringList builtin_void_field(std::begin(_builtin_void_field),
+                                   std::end(_builtin_void_field));
+    void_fields = new SimpleSet(knob_void_field_list, builtin_void_field);
+    llvm::errs() << "    - Void fields, total: " << void_fields->size() << "\n";
 }
 
 std::string get_struct_name(std::string tname)
@@ -1319,6 +1326,20 @@ bool is_same_struct(StructType *s1, StructType *s2) {
     if (get_struct_name(s1->getName().str()) == get_struct_name(s2->getName().str()))
         return true;
     return false;
+}
+
+// t1: struct type
+// t2: struct pointer type
+bool is_same_struct_ptr(Type *t1, Type *t2) {
+    PointerType *p2 = dyn_cast<PointerType>(t2);
+    if (!p2)
+        return false;
+    Type *e2 = p2->getElementType();
+    StructType *s1 = dyn_cast<StructType>(t1);
+    StructType *s2 = dyn_cast<StructType>(e2);
+    if (!s1 || !s2)
+        return false;
+    return is_same_struct(s1, s2);
 }
 ////////////////////////////////////////////////////////////////////////////////
 void dump_callstack(InstructionList& callstk)

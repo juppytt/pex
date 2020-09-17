@@ -69,7 +69,8 @@ typedef std::list<IFPair*> IFPairs;
 typedef std::unordered_map<StructType*, IFPairs*> DMInterface;
 
 //juhee
-typedef std::map<std::string, StructType *> StructTypeMap;
+typedef std::map<std::string, StructType*> StructTypeMap;
+typedef std::map<StructType*, int> StructIdxMap;
 typedef std::set<StructType*> StructTypeSet;
 typedef std::map<StructType*, StructTypeMap*> STy2PTy;
 typedef std::map<Function *, std::set<int>> FunctionIntMap;

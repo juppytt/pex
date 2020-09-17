@@ -175,11 +175,14 @@ class gatlin : public ModulePass
         //juhee
         void crit_type_field_in_func_collect(Function*, Type2Fields&, InstructionList& chks);
         void analyze_crit_struct(Module&);
+        void analyze_void_field(Module&);
         void analyze_crit_cast(StructTypeMap&);
-        void find_internal_usage(Function*, Instruction*, DominatorTree*, Ty2StrListSet&);
+        void analyze_void_cast(StructIdxMap&);
+        void find_internal_usage(Type*, Function*, Instruction*, DominatorTree*, Ty2StrListSet&);
         void dump_crit_cast(StructTypeMap &);
         void dump_usage(Ty2StrListSet &);
-				void build_crit_struct_map(Module&, StructTypeMap&);
+	void build_crit_struct_map(Module&, StructTypeMap&);
+        void build_void_field_map(Module&, StructIdxMap&);
         void find_crit_parent_struct(Module&, StructTypeMap&, STy2PTy&, STy2PTy&);
         void _find_crit_parent_struct(StructType*, StructTypeMap&, StringSet&,
                                       STy2PTy&, STy2PTy&, TypeList&);

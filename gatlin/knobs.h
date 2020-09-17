@@ -134,8 +134,16 @@ cl::opt<bool> knob_analyze_crit_struct("struct-anal",
         cl::desc("Critical struct usage analysis"),
         cl::init(false));
 
+cl::opt<bool> knob_analyze_void_cast("void-anal",
+        cl::desc("Void pointer field analysis"),
+        cl::init(false));
+
 cl::opt<string> knob_crit_struct_list("structlist",
         cl::desc("Critical struct list for usage analysis"),
+        cl::init("crit.struct"));
+
+cl::opt<string> knob_void_field_list("voidlist",
+        cl::desc("Void pointer field list for usage analysis"),
         cl::init("crit.struct"));
 
 cl::opt<bool> knob_crit_struct_write_only("write-only",

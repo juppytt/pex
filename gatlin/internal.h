@@ -12,6 +12,13 @@ static const char *_builtin_crit_struct [] =
     "struct.task_struct",
     "struct.cred",
 };
+
+[[maybe_unused]]
+static const char *_builtin_void_field [] =
+{
+    "struct.inode-46"
+};
+
 /*
  * check functions
  */
