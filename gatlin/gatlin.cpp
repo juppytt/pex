@@ -321,7 +321,7 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
     for (auto smap : crit_map) {
         errs() << "\nType: " << (smap.second)->getName() << "\n";
         for (auto func : *T2Fc[smap.second]) {
-            errs() << "  Function " << func->getName() << "\n";
+            errs() << "\n  Function " << func->getName() << "\n";
 
             Ty2StrListSet usageset;
             DominatorTree dt(*func);
@@ -331,6 +331,11 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
                     find_internal_usage(smap.second, func, ii, &dt, usageset);
             }
             dump_usage(usageset);
+            errs() << "    Cast Inst:\n";
+            for (auto ii : *T2Ci[smap.second]) {
+                if (ii->getFunction() == func)
+                    errs() << "      " << *ii << "\n";
+            }
         }
     }
 }
