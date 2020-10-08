@@ -37,7 +37,6 @@ std::list<int> x_dbg_idx;
 
 std::mutex x_lock;
 
-#define PEX 0
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -155,8 +154,27 @@ void gatlin::dump_crit_cast(StructTypeMap &crit_map) {
     return;
 }
 
-void gatlin::dump_usage(Ty2StrListSet &usage) {
+bool gatlin::dump_usage(Function *func, Ty2StrListSet &usage) {
+
+    bool isEmpty = true;
+    if (usage.empty())
+        return isEmpty;
+
     for (auto umap : usage) {
+        if (!umap.second->empty()){
+            isEmpty = false;
+            break;
+        }
+    }
+    if (isEmpty)
+        return isEmpty;
+   
+    errs() << "\n  Function " << func->getName() << "\n";
+
+    for (auto umap : usage) {
+        if (umap.second->empty())
+            continue;
+       
         errs() << "    Cast Type:  ";
         if ((umap.first)->isStructTy())
             errs() << (umap.first)->getStructName() << "\n";
@@ -176,6 +194,7 @@ void gatlin::dump_usage(Ty2StrListSet &usage) {
         }
         errs() <<"\n";
     }
+    return isEmpty;
 }
 
 
@@ -230,6 +249,11 @@ void gatlin::find_internal_usage(Type *ty, Function *func, Instruction *srci,
                  || isa<StoreInst>(ii) || isa<LoadInst>(ii)
                  || isa<CmpInst>(ii) || isa<SwitchInst>(ii)) {
 
+            // skip asm call
+            if (isa<CallBase>(ii)) {
+                if (dyn_cast<CallBase>(ii)->isInlineAsm())
+                    continue;
+            }
             int isnew = 1;
             // insert string list to usageset if this is new
             for (StringList *sl : *usageset) {
@@ -321,7 +345,6 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
     for (auto smap : crit_map) {
         errs() << "\nType: " << (smap.second)->getName() << "\n";
         for (auto func : *T2Fc[smap.second]) {
-            errs() << "\n  Function " << func->getName() << "\n";
 
             Ty2StrListSet usageset;
             DominatorTree dt(*func);
@@ -330,11 +353,13 @@ void gatlin::analyze_crit_cast(StructTypeMap &crit_map) {
                 if (ii->getFunction() == func)
                     find_internal_usage(smap.second, func, ii, &dt, usageset);
             }
-            dump_usage(usageset);
-            errs() << "    Cast Inst:\n";
-            for (auto ii : *T2Ci[smap.second]) {
-                if (ii->getFunction() == func)
-                    errs() << "      " << *ii << "\n";
+            bool isEmpty = dump_usage(func, usageset);
+            if (!isEmpty) {
+                errs() << "    Cast Inst:\n";
+                for (auto ii : *T2Ci[smap.second]) {
+                    if (ii->getFunction() == func)
+                        errs() << "      " << *ii << "\n";
+                }
             }
         }
     }
@@ -3810,59 +3835,6 @@ void gatlin::process_cpgf(Module& module)
      * pre-process
      * generate resource/functions from syscall entry function
      */
-#if PEX
-    initialize_gatlin_sets(knob_skip_func_list, knob_skip_var_list,
-                            knob_crit_symbol, knob_kernel_api);
-
-    errs()<<"Pre-processing...\n";
-    STOP_WATCH_MON(WID_0, preprocess(module));
-    errs()<<"Found "<<syscall_list.size()<<" syscalls\n";
-
-    errs()<<"Process Gating Functions\n";
-    STOP_WATCH_START(WID_0);
-    if (knob_gating_type=="cap")
-        gating = new GatingCap(module, knob_cap_function_list);
-    else if (knob_gating_type=="lsm")
-        gating = new GatingLSM(module, knob_lsm_function_list);
-    else if (knob_gating_type=="dac")
-        gating = new GatingDAC(module);
-    else
-        llvm_unreachable("invalid setting!");
-    STOP_WATCH_STOP(WID_0);
-    STOP_WATCH_REPORT(WID_0);
-    dump_gating();
-
-    //pass 0
-    errs()<<"Collect Checkpoints\n";
-    STOP_WATCH_MON(WID_0, collect_chkps(module));
-    errs()<<"Identify interesting struct\n";
-    STOP_WATCH_MON(WID_0, identify_interesting_struct(module));
-
-    errs()<<"Collecting Initialization Closure.\n";
-    STOP_WATCH_MON(WID_0, collect_kernel_init_functions(module));
-
-    //statistics for function signature based approache
-    //STOP_WATCH_MON(WID_0, my_debug(module));
-    //exit (0);
-
-    errs()<<"Identify Kernel Modules Interface\n";
-    STOP_WATCH_MON(WID_0, identify_kmi(module));
-    dump_kmi();
-    errs()<<"dynamic KMI\n";
-    STOP_WATCH_MON(WID_0, identify_dynamic_kmi(module));
-    dump_dkmi();
-
-    errs()<<"Populate indirect callsite using kernel module interface\n";
-    STOP_WATCH_MON(WID_0, populate_indcall_list_through_kmi(module));
-
-    if (knob_gatlin_cvf)
-    {
-        errs()<<"Resolve indirect callsite.\n";
-        STOP_WATCH_MON(WID_0, populate_indcall_list_using_cvf(module));
-    }
-    //exit(0);
-#endif
-
     if (knob_analyze_crit_struct) {
         initialize_crit_struct(knob_crit_struct_list);
         analyze_crit_struct(module);
@@ -3871,8 +3843,60 @@ void gatlin::process_cpgf(Module& module)
         initialize_void_field(knob_void_field_list);
         analyze_void_field(module);
         delete void_fields;
-    }
+    } /*else if (knob_analyze_indcall) {
+        dump_indcall(module);
+    }*/
     else {
+        initialize_gatlin_sets(knob_skip_func_list, knob_skip_var_list,
+                               knob_crit_symbol, knob_kernel_api);
+
+        errs()<<"Pre-processing...\n";
+        STOP_WATCH_MON(WID_0, preprocess(module));
+        errs()<<"Found "<<syscall_list.size()<<" syscalls\n";
+
+        errs()<<"Process Gating Functions\n";
+        STOP_WATCH_START(WID_0);
+        if (knob_gating_type=="cap")
+            gating = new GatingCap(module, knob_cap_function_list);
+        else if (knob_gating_type=="lsm")
+            gating = new GatingLSM(module, knob_lsm_function_list);
+        else if (knob_gating_type=="dac")
+            gating = new GatingDAC(module);
+        else
+            llvm_unreachable("invalid setting!");
+        STOP_WATCH_STOP(WID_0);
+        STOP_WATCH_REPORT(WID_0);
+        dump_gating();
+
+        //pass 0
+        errs()<<"Collect Checkpoints\n";
+        STOP_WATCH_MON(WID_0, collect_chkps(module));
+        errs()<<"Identify interesting struct\n";
+        STOP_WATCH_MON(WID_0, identify_interesting_struct(module));
+
+        errs()<<"Collecting Initialization Closure.\n";
+        STOP_WATCH_MON(WID_0, collect_kernel_init_functions(module));
+
+        //statistics for function signature based approache
+        //STOP_WATCH_MON(WID_0, my_debug(module));
+        //exit (0);
+
+        errs()<<"Identify Kernel Modules Interface\n";
+        STOP_WATCH_MON(WID_0, identify_kmi(module));
+        dump_kmi();
+        errs()<<"dynamic KMI\n";
+        STOP_WATCH_MON(WID_0, identify_dynamic_kmi(module));
+        dump_dkmi();
+
+        errs()<<"Populate indirect callsite using kernel module interface\n";
+        STOP_WATCH_MON(WID_0, populate_indcall_list_through_kmi(module));
+
+        if (knob_gatlin_cvf)
+        {
+            errs()<<"Resolve indirect callsite.\n";
+            STOP_WATCH_MON(WID_0, populate_indcall_list_using_cvf(module));
+        }
+
         //pass 1
         errs()<<"Collect all permission-checked variables and functions\n";
         STOP_WATCH_MON(WID_0, collect_crits(module));
@@ -3907,15 +3931,16 @@ void gatlin::process_cpgf(Module& module)
             }
             dump_non_kinit();
         }
+
+        delete skip_funcs;
+        delete skip_vars;
+        delete crit_syms;
+        delete kernel_api;
+        delete gating;
+
+        //exit(0);
     }
 
-#if PEX
-    delete skip_funcs;
-    delete skip_vars;
-    delete crit_syms;
-    delete kernel_api;
-    delete gating;
-#endif
 }
 
 bool gatlin::runOnModule(Module &module)

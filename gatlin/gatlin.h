@@ -180,7 +180,7 @@ class gatlin : public ModulePass
         void analyze_void_cast(StructIdxMap&);
         void find_internal_usage(Type*, Function*, Instruction*, DominatorTree*, Ty2StrListSet&);
         void dump_crit_cast(StructTypeMap &);
-        void dump_usage(Ty2StrListSet &);
+        bool dump_usage(Function*,Ty2StrListSet &);
 	void build_crit_struct_map(Module&, StructTypeMap&);
         void build_void_field_map(Module&, StructIdxMap&);
         void find_crit_parent_struct(Module&, StructTypeMap&, STy2PTy&, STy2PTy&);
