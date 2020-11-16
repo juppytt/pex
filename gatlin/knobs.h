@@ -150,5 +150,9 @@ cl::opt<bool> knob_crit_struct_write_only("write-only",
         cl::desc("Collect and check critical data write only - disabled by default"),
         cl::init(false));
 
+cl::opt<bool> knob_crit_struct_parent("crit-parent",
+        cl::desc("Critical struct parent analysis"),
+        cl::init(false));
+
 
 #endif//_CAPCHK_KNOBS_

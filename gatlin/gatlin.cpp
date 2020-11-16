@@ -385,31 +385,36 @@ void gatlin::analyze_crit_struct(Module &M)
     STy2PTy st2pt_nest;
     STy2PTy st2pt_point;
     build_crit_struct_map(M, crit_struct_map);
-/*
-    for (auto *STy : M.getIdentifiedStructTypes()) {
-        if (!st_visited.count(get_struct_name(STy->getName().str()))) {
-            if (STy->getName().startswith("union.anon") | STy->getName().startswith("struct.anon"))
-                continue;
-            all_structs.insert(STy);
+    StructTypeMap *struct_map = &crit_struct_map;
+
+    if (knob_crit_struct_parent) {
+        for (auto *STy : M.getIdentifiedStructTypes()) {
+            if (!st_visited.count(get_struct_name(STy->getName().str()))) {
+                if (STy->getName().startswith("union.anon") | STy->getName().startswith("struct.anon"))
+                    continue;
+                all_structs.insert(STy);
+            }
         }
+
+        errs() << "Initial structs\n";
+        dump_structs(crit_struct_map);
+
+        find_crit_parent_struct(M, crit_parent_map, st2pt_nest, st2pt_point);
+
+        errs() << "All critical parents\n";
+        dump_structs(crit_parent_map, st2pt_nest, st2pt_point);
+
+        errs() << "Total struct    : " << all_structs.size() << "\n";
+        errs() << "Critical struct : " << crit_struct_map.size() << "\n";
+        errs() << "Parent struct   : " << crit_parent_map.size() << "\n";
+        struct_map = &crit_parent_map;
     }
 
-    errs() << "Initial structs\n";
-    dump_structs(crit_struct_map);
-
-    find_crit_parent_struct(M, crit_parent_map, st2pt_nest, st2pt_point);
-
-    errs() << "All critical parents\n";
-    dump_structs(crit_parent_map, st2pt_nest, st2pt_point);
-
-    errs() << "Total struct    : " << all_structs.size() << "\n";
-    errs() << "Critical struct : " << crit_struct_map.size() << "\n";
-    errs() << "Parent struct   : " << crit_parent_map.size() << "\n";
-*/
-    crit_parent_map = crit_struct_map;
-
-    collect_crit_cast(M, crit_parent_map);
-    analyze_crit_cast(crit_parent_map);
+    collect_crit_cast(M, *struct_map);
+    if (knob_crit_struct_parent)
+        dump_crit_cast(*struct_map);
+    else
+        analyze_crit_cast(*struct_map);
 
 //    Type2ChkInst crit_struct_read, crit_struct_write, crit_parent_read, crit_parent_write;
 //    unsigned total_read = 0, total_write = 0;
